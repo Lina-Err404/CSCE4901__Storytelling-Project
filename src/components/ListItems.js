@@ -2,19 +2,18 @@
 
 import { useState, useEffect } from 'react'
 import db from '../utils/firestore'
-import { collection, getDocs } from "@firebase/firestore"
-import DeleteItem from "./DeleteItem"
+import { collection, onSnapshot } from "@firebase/firestore"
 
 const ListItems = () => {
     const [items, setItems] = useState([])
 
     useEffect(() => {
-        const fetchItems = async () => {
-            const querySnapshot = await getDocs(collection(db, 'items')) // get all the documents in items collection
-            setItems(querySnapshot.docs.map((doc) => ({...doc.data(), id: doc.id }))) // map items with ids
-        }
+        // listens for changes, so the list updates after a submit or delete
+        const unsubscribe = onSnapshot(collection(db, 'items'), (snapshot) => {
+            setItems(snapshot.docs.map((doc) => ({...doc.data(), id: doc.id }))) // map items with ids
+        })
 
-        fetchItems()
+        return () => unsubscribe() // stop listening when the component unmounts
     }, [])
 
     return (
@@ -24,7 +23,6 @@ const ListItems = () => {
                 {items.map((item) => (
                     <li key={item.id}>
                         <p>{item.name}</p>
-                        <DeleteItem id={item.id} />
                     </li>
                 ))}
             </ul>
