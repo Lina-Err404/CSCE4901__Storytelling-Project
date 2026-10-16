@@ -1,0 +1,102 @@
+.page {
+  min-height: 100vh;
+  --blue: #184988; 
+  background: var(--blue);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2.5rem;
+  padding: 2rem 1rem;
+}
+
+.codeRow {
+  display: flex;
+  gap: clamp(0.5rem, 2.5vw, 1.9rem);
+}
+
+.tile {
+  width: clamp(2.6rem, 11vw, 5.6rem);
+  aspect-ratio: 1;
+  background: #e8e0db;
+  color: #12285a;
+  border: 0;
+  border-radius: 4px;
+  text-align: center;
+  font-size: clamp(1.5rem, 5.5vw, 3rem);
+  font-weight: 800;
+  caret-color: transparent;
+  text-transform: uppercase;
+}
+
+.tile:focus-visible {
+  outline: 3px solid #a3b0d4;
+  outline-offset: 3px;
+}
+
+.joinRow {
+  display: flex;
+  align-items: center;       /* vertically centers the moons on the button */
+  gap: 0.6rem;
+  width: min(100%, 680px);   /* total width: button plus both decorations */
+}
+
+.side {
+  flex-shrink: 0;            /* stops the decorations from shrinking when space is tight */
+}
+
+.joinButton {
+  --shape: polygon(4% 0, 96% 0, 100% 50%, 96% 100%, 4% 100%, 0 50%);
+
+  position: relative;
+  flex: 1;
+  height: 64px;
+  border: 0;
+  background: #e8e0db;
+  clip-path: var(--shape);
+  cursor: pointer;
+  color: #12285a;
+  font-family: inherit;
+  font-size: 1.6rem;
+  font-weight: 800;
+}
+
+.joinButton::before,
+.joinButton::after {
+  content: "";
+  position: absolute;
+  clip-path: var(--shape);
+}
+
+.joinButton::before {
+  inset: 6px;
+  background: var(--blue);
+}
+
+.joinButton::after {
+  inset: 9px;
+  background: #e8e0db;
+}
+
+.joinButton span {
+  position: relative;
+  z-index: 1;
+}
+
+.joinButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.joinButton:focus-visible {
+  outline: 3px solid #a3b0d4;
+  outline-offset: 4px;
+}
+
+.tagline {
+  margin: -1rem 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #fff;
+  text-align: center;
+}
