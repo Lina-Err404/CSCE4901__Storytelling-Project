@@ -7,21 +7,30 @@ export default function StartingPrompt() {
   const [promptType, setPromptType] = useState('custom');
   const [promptText, setPromptText] = useState('');
   const [assignmentType, setAssignmentType] = useState('entire-class');
+  const [submitStatus, setSubmitStatus] = useState('');
 
   //this sends the teachers prompt to the backend, the backend doesnt save the prompts yet
   const handlePromptSubmit = async () => {
     try {
+      setSubmitStatus('Saving...');
       const response = await fetch("/api/starting-prompts", {
-
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ promptText }),
+        // sending the dropdown selections along with the prompt text
+        body: JSON.stringify({ promptType, promptText, assignmentType }),
       });
 
       const result = await response.json();
       console.log("Backend response:", result);
+      
+      if (response.ok || response.status === 501) { 
+        setSubmitStatus('Prompt saved successfully!');
+      } else {
+        setSubmitStatus('Error: ' + (result.error || 'Failed to save prompt.'));
+      }
     } catch (error) {
       console.error("Could not contact the backend:", error);
+      setSubmitStatus('Error: Could not reach the server.');
     }
   };
 
@@ -31,8 +40,8 @@ export default function StartingPrompt() {
       
       {/* dropdown letting teachers pick if they want to write a prompt, use a random one, or skip it entirely */}
       <div style={{ marginBottom: '10px' }}>
-        <label>Prompt Mode: </label>
-        <select value={promptType} onChange={(e) => setPromptType(e.target.value)}>
+        <label htmlFor="prompt-mode">Prompt Mode: </label>
+        <select id="prompt-mode" value={promptType} onChange={(e) => setPromptType(e.target.value)}>
           <option value="custom">Write Custom Prompt</option>
           <option value="random">Random Starting Phrase</option>
           <option value="none">No Prompt</option>
@@ -51,8 +60,8 @@ export default function StartingPrompt() {
 
       {/* dropdown handling how the prompt gets distributed (breakout groups vs the whole class) */}
       <div style={{ marginBottom: '10px' }}>
-        <label>Assign Prompt To: </label>
-        <select value={assignmentType} onChange={(e) => setAssignmentType(e.target.value)}>
+        <label htmlFor="assignment-type">Assign Prompt To: </label>
+        <select id="assignment-type" value={assignmentType} onChange={(e) => setAssignmentType(e.target.value)}>
           <option value="entire-class">Entire Class</option>
           <option value="different-groups">Different Version per Group</option>
           <option value="randomized">Randomize per Group</option>
@@ -63,6 +72,10 @@ export default function StartingPrompt() {
       <button type="button" onClick={handlePromptSubmit}>
         Submit
       </button>
+      
+      {submitStatus && (
+        <p style={{ marginTop: '10px', fontWeight: 'bold' }}>{submitStatus}</p>
+      )}
       
     </div>
   );
