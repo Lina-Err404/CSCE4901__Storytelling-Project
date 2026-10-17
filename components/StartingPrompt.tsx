@@ -8,9 +8,21 @@ export default function StartingPrompt() {
   const [promptText, setPromptText] = useState('');
   const [assignmentType, setAssignmentType] = useState('entire-class');
 
-  // TODO: build the handler to send this data over to fikayo's backend controller later
-  const handlePromptSubmit = () => {
-    console.log("sending to backend:", promptText);
+  //this sends the teachers prompt to the backend, the backend doesnt save the prompts yet
+  const handlePromptSubmit = async () => {
+    try {
+      const response = await fetch("/api/starting-prompts", {
+
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ promptText }),
+      });
+
+      const result = await response.json();
+      console.log("Backend response:", result);
+    } catch (error) {
+      console.error("Could not contact the backend:", error);
+    }
   };
 
   return (
@@ -46,6 +58,11 @@ export default function StartingPrompt() {
           <option value="randomized">Randomize per Group</option>
         </select>
       </div>
+
+      {/* a button that runs the prompt submit function when the button is clicked */}
+      <button type="button" onClick={handlePromptSubmit}>
+        Submit
+      </button>
       
     </div>
   );
