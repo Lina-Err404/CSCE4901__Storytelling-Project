@@ -1,36 +1,80 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import {
+  approveStory as approveStoryInDb,
+  loadStory,
+  saveFeedback as saveFeedbackInDb,
+  type Story,
+} from "@/lib/storyReview";
 
-// Sample completed story for frontend development.
-// Replace this with backend data when integrating with Shanti.
-const sampleStory = {
-  title: "The Secret Door",
-  group: "Group 1",
-  authors: "Heather, Marcus, and Sam",
-  text: [
-    "Maya found a tiny golden key beneath the library window. Attached to it was a note: Find the door that nobody sees.",
-    "She asked her friends to help. Together, they discovered a door hidden behind a shelf of dusty books. The key fit perfectly.",
-    "Inside was a garden filled with glowing flowers. They decided to protect its secret and return every afternoon for a new adventure.",
-  ],
-};
+// Which story to review. Later this can come from the URL or a review queue.
+const STORY_ID = "story-1";
 
 export default function TeacherReviewPage() {
+  const [story, setStory] = useState<Story | null>(null);
+  const [loadError, setLoadError] = useState("");
   const [feedback, setFeedback] = useState("");
   const [savedFeedback, setSavedFeedback] = useState("");
   const [approved, setApproved] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
-  // Save feedback locally for this demo.
-  function saveFeedback() {
-    setSavedFeedback(feedback.trim());
-    setMessage("Feedback saved for this demo session.");
+  // Load the story and its saved feedback/approval from Firestore.
+  useEffect(() => {
+    loadStory(STORY_ID)
+      .then((loaded) => {
+        setStory(loaded);
+        setFeedback(loaded.feedback);
+        setSavedFeedback(loaded.feedback);
+        setApproved(loaded.status === "approved");
+      })
+      .catch((error) => {
+        console.error("Failed to load story", error);
+        setLoadError("Could not load this story. Please try again.");
+      });
+  }, []);
+
+  // Save feedback to Firestore so it stays after a refresh.
+  async function saveFeedback() {
+    const trimmed = feedback.trim();
+    setSaving(true);
+    try {
+      await saveFeedbackInDb(STORY_ID, trimmed);
+      setSavedFeedback(trimmed);
+      setFeedback(trimmed);
+      setMessage("Feedback saved.");
+    } catch (error) {
+      console.error("Failed to save feedback", error);
+      setMessage("Could not save feedback. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  // Approval is local until the backend is connected.
-  function approveStory() {
-    setApproved(true);
-    setMessage("Story approved for this demo session.");
+  // Save approval to Firestore.
+  async function approveStory() {
+    setSaving(true);
+    try {
+      await approveStoryInDb(STORY_ID);
+      setApproved(true);
+      setMessage("Story approved.");
+    } catch (error) {
+      console.error("Failed to approve story", error);
+      setMessage("Could not approve the story. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loadError || !story) {
+    return (
+      <main className="min-h-screen bg-[#1e4d85] px-4 py-8 text-white sm:px-8">
+        <p role="status" className="mx-auto max-w-6xl">
+          {loadError || "Loading story..."}
+        </p>
+      </main>
+    );
   }
 
   return (
@@ -42,27 +86,24 @@ export default function TeacherReviewPage() {
           <p className="mt-2">
             Read completed stories, leave feedback, and approve them.
           </p>
-          <p className="mt-3 text-sm text-blue-100">
-            Sample data — feedback and approval reset on refresh.
-          </p>
         </header>
 
         <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
           <article className="rounded-2xl bg-[#cad9eb] p-6 shadow-lg sm:p-8">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm font-semibold">{sampleStory.group}</p>
+              <p className="text-sm font-semibold">{story.group}</p>
               <span className="rounded-full bg-white px-3 py-1 text-sm font-semibold">
                 {approved ? "Approved" : "Awaiting review"}
               </span>
             </div>
 
-            <h2 className="mt-5 text-2xl font-bold">{sampleStory.title}</h2>
+            <h2 className="mt-5 text-2xl font-bold">{story.title}</h2>
             <p className="mt-2 text-sm">
-              Written by {sampleStory.authors}
+              Written by {story.authors}
             </p>
 
             <div className="mt-6 space-y-5 rounded-xl bg-white p-6 leading-8">
-              {sampleStory.text.map((paragraph, index) => (
+              {story.text.map((paragraph, index) => (
                 <p key={index}>{paragraph}</p>
               ))}
             </div>
@@ -98,7 +139,9 @@ export default function TeacherReviewPage() {
               type="button"
               onClick={saveFeedback}
               disabled={
-                !feedback.trim() || feedback.trim() === savedFeedback
+                saving ||
+                !feedback.trim() ||
+                feedback.trim() === savedFeedback
               }
               className="mt-3 w-full rounded-lg bg-[#00566b] px-4 py-3 font-semibold text-white hover:bg-[#004353] disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -122,7 +165,9 @@ export default function TeacherReviewPage() {
               <button
                 type="button"
                 onClick={approveStory}
-                disabled={approved || feedback.trim() !== savedFeedback}
+                disabled={
+                  saving || approved || feedback.trim() !== savedFeedback
+                }
                 className="mt-4 w-full rounded-lg bg-green-700 px-4 py-3 font-semibold text-white hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {approved ? "Approved" : "Approve Story"}
