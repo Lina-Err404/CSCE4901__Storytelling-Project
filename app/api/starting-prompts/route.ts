@@ -21,14 +21,15 @@ try {
   );
   }
 
-  const promptText = body.promptText;
-
 
 
   
-  //this is to reject non text or prompts that are just spaces
+  //this is to reject non text or blank prompts when custom wasnt selected
+  const promptType = body.promptType;
 
-  if(typeof promptText !== "string" || !promptText.trim()) {
+  const promptText = body.promptText;
+
+  if( promptType === "custom" && ( typeof promptText !== "string" || !promptText.trim())) {
 
   return NextResponse.json(
 
