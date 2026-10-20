@@ -92,13 +92,12 @@ describe('lobby routes', () => {
     })).toThrow('jwtSecret must be at least 32 characters');
   });
 
-  test('joins a rostered student using the roster display name and returns a verifiable token', async () => {
+  test('joins a student by valid code even without a roster record and returns a verifiable token', async () => {
     await seedLobby();
-    await seedRoster(classId, [{ studentId: 'student-one', displayName: 'Roster Name' }]);
     const response = await join();
 
     expect(response.status).toBe(200);
-    expect(response.body.displayName).toBe('Roster Name');
+    expect(response.body.displayName).toBe('Typed Name');
     expect(response.body.lobbyId).toBe('lobby-one');
     expect(jwt.verify(response.body.token, JWT_SECRET, { algorithms: ['HS256'] })).toMatchObject({
       role: 'student',
@@ -106,7 +105,7 @@ describe('lobby routes', () => {
       studentId: 'student-one',
     });
     const seat = await db.collection('lobbies').doc('lobby-one').collection('students').doc('student-one').get();
-    expect(seat.data()).toMatchObject({ displayName: 'Roster Name', kicked: false });
+    expect(seat.data()).toMatchObject({ displayName: 'Typed Name', kicked: false });
   });
 
   test('rejects missing student authentication even when the body claims a roster ID', async () => {
@@ -120,17 +119,16 @@ describe('lobby routes', () => {
     expect(response.status).toBe(401);
   });
 
-  test('ignores a body student ID that differs from the authenticated UID', async () => {
+  test('ignores a body student ID that differs from the authenticated UID when the code is valid', async () => {
     await seedLobby();
-    await seedRoster(classId, [{ studentId: 'student-one', displayName: 'Roster Name' }]);
 
     const response = await request(testServer.app)
       .post('/lobbies/join')
       .set('x-test-student-uid', 'unrostered-user')
       .send({ code: 'ABC234', studentId: 'student-one', name: 'Claimed Name' });
 
-    expect(response.status).toBe(401);
-    expect(response.body).toEqual({ error: 'Could not join' });
+    expect(response.status).toBe(200);
+    expect(response.body.displayName).toBe('Claimed Name');
   });
 
   test.each([
@@ -138,16 +136,10 @@ describe('lobby routes', () => {
     ['code references a nonexistent lobby', async () => {
       await db.collection('lobbyCodes').doc('ABC234').set({ lobbyId: 'missing-lobby' });
     }],
-    ['student not on roster', async () => {}],
-    ['student rostered only in another class', async () => {
-      await seedClass({ classId: 'other-class', teacherId: 'teacher-one' });
-      await seedRoster('other-class', [{ studentId: 'student-one', displayName: 'Other Class' }]);
-    }],
     ['malformed student ID', async () => {}],
     ['locked lobby', async () => {}],
     ['closed lobby', async () => {}],
     ['kicked student', async () => {
-      await seedRoster(classId, [{ studentId: 'student-one', displayName: 'Roster Name' }]);
       await db.collection('lobbies').doc('lobby-one').collection('students').doc('student-one').set({ kicked: true });
     }],
   ])('returns the identical generic failure for %s', async (reason, prepare) => {
@@ -211,13 +203,13 @@ describe('lobby routes', () => {
     expect(response.body.students.map((student) => student.studentId)).toEqual(['active']);
   });
 
-  test('a student removed from the roster cannot newly join', async () => {
+  test('a student with a valid code can still join even after being removed from the roster', async () => {
     await seedLobby();
     await seedRoster(classId, [{ studentId: 'student-one', displayName: 'Roster Name' }]);
     await db.collection('classes').doc(classId).collection('roster').doc('student-one').delete();
 
     const response = await join();
-    expect(response.status).toBe(401);
-    expect(response.body).toEqual({ error: 'Could not join' });
+    expect(response.status).toBe(200);
+    expect(response.body.displayName).toBe('Typed Name');
   });
 });

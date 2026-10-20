@@ -81,7 +81,7 @@ export function StudentLobby({ user }: { user: User }) {
         <section className="mt-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <p className="text-sm text-slate-600">Signed in as {user.email || "student"}</p>
           <p className="mt-2 break-all font-mono text-xs text-slate-500">Student ID: {user.uid}</p>
-          <p className="mt-1 text-xs text-slate-500">Your teacher must add this Firebase UID to the class roster before you can join.</p>
+          <p className="mt-1 text-xs text-slate-500">Enter the valid class code to join the live lobby.</p>
 
           {!joined ? (
             <form onSubmit={joinLobby} className="mt-6 space-y-4">

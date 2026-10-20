@@ -206,25 +206,20 @@ function createLobbyRouter({ db, admin, requireTeacher, requireStudent, jwtSecre
         const lobbySnapshot = await transaction.get(lobbyRef);
         if (!lobbySnapshot.exists || lobbySnapshot.data().status !== 'open') return null;
 
-        const lobby = lobbySnapshot.data();
-        const rosterRef = db.collection('classes').doc(lobby.classId)
-          .collection('roster').doc(studentId);
         const seatRef = lobbyRef.collection('students').doc(studentId);
-        const [rosterSnapshot, seatSnapshot] = await Promise.all([
-          transaction.get(rosterRef),
-          transaction.get(seatRef),
-        ]);
-        if (!rosterSnapshot.exists || seatSnapshot.data()?.kicked === true) return null;
+        const seatSnapshot = await transaction.get(seatRef);
+        if (seatSnapshot.data()?.kicked === true) return null;
 
-        const displayName = cleanDisplayName(rosterSnapshot.data().displayName);
-        if (!displayName) return null;
+        const providedName = typeof req.body?.name === 'string' ? req.body.name : null;
+        const fallbackName = cleanDisplayName(providedName) || cleanDisplayName(studentId) || 'Student';
+        if (!fallbackName) return null;
 
         transaction.set(seatRef, {
-          displayName,
+          displayName: fallbackName,
           joinedAt: admin.firestore.FieldValue.serverTimestamp(),
           kicked: false,
         }, { merge: true });
-        return { displayName };
+        return { displayName: fallbackName };
       });
 
       if (!joinResult) return res.status(401).json(JOIN_FAILURE);

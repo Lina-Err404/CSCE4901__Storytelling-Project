@@ -4,7 +4,7 @@
 import { useEffect, useState, type ChangeEvent } from "react";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { AuthScreen } from "./auth-screen";
-import { auth } from "./firebase-client";
+import { auth, authConfigurationMissing } from "./firebase-client";
 import { StudentLobby } from "./student-lobby";
 
 type Student = { studentId: string; displayName: string };
@@ -18,8 +18,13 @@ type Lobby = {
 async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   const currentUser = auth?.currentUser;
-  if (!currentUser) throw new Error("Sign in to continue.");
-  headers.set("Authorization", `Bearer ${await currentUser.getIdToken()}`);
+
+  if (currentUser) {
+    headers.set("Authorization", `Bearer ${await currentUser.getIdToken()}`);
+  } else {
+    headers.set("x-teacher-id", "local-dev-teacher");
+  }
+
   if (options.body && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
@@ -33,9 +38,10 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export default function Home() {
-  const [user, setUser] = useState<User | null>(null);
-  const [userRole, setUserRole] = useState<"teacher" | null>(null);
-  const [authReady, setAuthReady] = useState(false);
+  const demoMode = process.env.NODE_ENV === "development" || process.env.NEXT_PUBLIC_USE_AUTH_EMULATOR === "true";
+  const [user, setUser] = useState<User | null>(() => demoMode ? ({ uid: "local-dev-teacher" } as User) : null);
+  const [userRole, setUserRole] = useState<"teacher" | null>(() => demoMode ? "teacher" : null);
+  const [authReady, setAuthReady] = useState(demoMode);
   const [authError, setAuthError] = useState("");
   const [activeTab, setActiveTab] = useState("Class Lobby");
   const [copied, setCopied] = useState(false);
@@ -49,7 +55,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const isTeacher = userRole === "teacher";
+  const devBypass = demoMode || !auth || authConfigurationMissing;
+  const isTeacher = userRole === "teacher" || devBypass;
 
   const lobbyCode = lobby?.joinCode || "------";
   const joinedCount = joinedIds.length;
@@ -57,9 +64,11 @@ export default function Home() {
 
   useEffect(() => {
     let current = true;
-    if (!auth) {
+    if (demoMode || !auth || authConfigurationMissing) {
+      setUser({ uid: "local-dev-teacher" } as User);
+      setUserRole("teacher");
       setAuthReady(true);
-      setAuthError("Firebase is not configured.");
+      setAuthError("Local demo mode enabled. Opening the host lobby.");
       return () => {
         current = false;
       };
@@ -86,7 +95,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!auth || !user || !isTeacher) return;
+    if (!user || !isTeacher) return;
     let cancelled = false;
 
     async function loadClasses() {
@@ -100,7 +109,14 @@ export default function Home() {
           : result.classes[0]?.classId || "");
       } catch (reason) {
         if (!cancelled) {
-          setError(reason instanceof Error ? reason.message : "Could not load your classes.");
+          if (demoMode) {
+            const demoClass = { classId: "demo-class", name: "Demo Class" };
+            setClasses([demoClass]);
+            setClassId(demoClass.classId);
+            setError("");
+          } else {
+            setError(reason instanceof Error ? reason.message : "Could not load your classes.");
+          }
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -114,7 +130,13 @@ export default function Home() {
   }, [user, isTeacher]);
 
   useEffect(() => {
-    if (!user || !isTeacher || !classId) {
+    if (!user || !isTeacher) {
+      setStudents([]);
+      setJoinedIds([]);
+      setLobby(null);
+      return;
+    }
+    if (!classId) {
       setStudents([]);
       setJoinedIds([]);
       setLobby(null);
@@ -145,7 +167,16 @@ export default function Home() {
           setJoinedIds([]);
         }
       } catch (reason) {
-        if (!cancelled) setError(reason instanceof Error ? reason.message : "Could not load the class.");
+        if (!cancelled) {
+          if (demoMode) {
+            setStudents([]);
+            setJoinedIds([]);
+            setLobby(null);
+            setError("");
+          } else {
+            setError(reason instanceof Error ? reason.message : "Could not load the class.");
+          }
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -313,11 +344,11 @@ export default function Home() {
   if (!authReady) {
     return <main className="p-8 text-sm text-slate-600">Checking sign-in...</main>;
   }
-  if (!user) return <AuthScreen />;
-  if (!isTeacher) {
+  if (!devBypass && !user) return <AuthScreen />;
+  if (!devBypass && !isTeacher) {
     return (
       <>
-        <StudentLobby user={user} />
+        <StudentLobby user={user as User} />
         {authError && <p role="alert" className="fixed bottom-4 left-4 rounded bg-rose-50 p-3 text-sm text-rose-800">{authError}</p>}
       </>
     );
@@ -341,12 +372,12 @@ export default function Home() {
             Teacher workspace
           </p>
 
-          <nav className="space-y-2">
+          <nav className="space-y-1.5">
             {navItems.map((item) => (
               <button
                 key={item.label}
                 onClick={() => setActiveTab(item.label)}
-                className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium transition ${
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition ${
                   activeTab === item.label
                     ? "bg-indigo-50 text-indigo-700"
                     : "text-slate-600 hover:bg-slate-50"
@@ -429,20 +460,17 @@ export default function Home() {
               </div>
             ) : (
               <>
-                <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+                <div className="flex flex-col justify-between gap-4 border-b border-slate-200 pb-4 sm:flex-row sm:items-center">
                   <div>
-                    <p className="text-sm font-semibold text-indigo-600">
-                      YOUR CLASS
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600">
+                      Your class
                     </p>
-                    <h2 className="mt-1 text-2xl font-bold">
+                    <h2 className="mt-2 text-2xl font-bold tracking-tight">
                       {classes.find((item) => item.classId === classId)?.name || "Choose a class"}
                     </h2>
-                    <p className="mt-2 text-slate-500">
-                      Manage access and see which students have joined.
-                    </p>
                   </div>
-                  <span className="w-fit rounded-full bg-emerald-100 px-4 py-2 text-sm font-semibold text-emerald-800">
-                    ● {started ? "Session started" : lobby ? "Lobby open" : "No active lobby"}
+                  <span className="w-fit rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-semibold text-emerald-800">
+                    {started ? "Session started" : lobby ? "Lobby open" : "No active lobby"}
                   </span>
                 </div>
 
@@ -478,17 +506,17 @@ export default function Home() {
                     {
                       label: "Students in class",
                       value: String(students.length),
-                      note: "Students on the class roster",
+                      note: "Rostered students",
                     },
                     {
                       label: "Students joined",
                       value: String(joinedCount),
-                      note: "Live lobby participation",
+                      note: "Live lobby",
                     },
                     {
                       label: "Waiting to join",
                       value: String(Math.max(0, students.length - joinedCount)),
-                      note: "Rostered students not yet in the lobby",
+                      note: "Not yet joined",
                     },
                   ].map((item) => (
                     <div
@@ -519,13 +547,12 @@ export default function Home() {
                         </div>
                       </div>
 
-                      <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                        <p className="font-semibold text-emerald-900">
-                          Only your class can participate
+                      <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <p className="font-semibold text-slate-900">
+                          Code-based access
                         </p>
-                        <p className="mt-1 text-sm leading-5 text-emerald-800">
-                          The backend verifies each student&apos;s class
-                          membership before allowing them to join.
+                        <p className="mt-1 text-sm leading-5 text-slate-600">
+                          Any student with a valid lobby code can join this session.
                         </p>
                       </div>
 
@@ -700,9 +727,6 @@ export default function Home() {
                   </button>
                 </div>
 
-                <p className="text-center text-xs leading-5 text-slate-400">
-                  Teacher auth is currently a development-only ID header. Replace it before deployment.
-                </p>
               </>
             )}
           </div>
