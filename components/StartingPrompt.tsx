@@ -12,11 +12,10 @@ export default function StartingPrompt() {
   //this sends the teachers prompt to the backend, the backend doesnt save the prompts yet
   const handlePromptSubmit = async () => {
     try {
-      setSubmitStatus('Saving...');
+      setSubmitStatus('Assigning prompt to the classroom...');
       const response = await fetch("/api/starting-prompts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // sending the dropdown selections along with the prompt text
         body: JSON.stringify({ promptType, promptText, assignmentType }),
       });
 
@@ -24,7 +23,7 @@ export default function StartingPrompt() {
       console.log("Backend response:", result);
       
       if (response.ok || response.status === 501) { 
-        setSubmitStatus('Prompt saved successfully!');
+        setSubmitStatus('Prompt successfully assigned!');
       } else {
         setSubmitStatus('Error: ' + (result.error || 'Failed to save prompt.'));
       }
@@ -34,49 +33,102 @@ export default function StartingPrompt() {
     }
   };
 
+  const labelStyle = { 
+    display: 'block', 
+    marginBottom: '8px', 
+    fontWeight: 'bold', 
+    fontSize: '15px', 
+    color: '#1e293b' 
+  };
+  
+  const inputStyle = { 
+    width: '100%', 
+    padding: '14px', 
+    borderRadius: '10px', 
+    border: '2px solid #e2e8f0', 
+    backgroundColor: '#f8fafc',
+    fontSize: '15px', 
+    fontFamily: 'inherit',
+    boxSizing: 'border-box' as const,
+    color: '#333'
+  };
+
   return (
-    <div className="prompt-container" style={{ padding: '20px', border: '1px solid #ccc', borderRadius: '8px' }}>
-      <h3>Starting Prompt</h3>
+    <div style={{ 
+      backgroundColor: '#ffffff', 
+      padding: '35px', 
+      borderRadius: '16px', 
+      boxShadow: '0 10px 25px rgba(0,0,0,0.1)' 
+    }}>
+      <h3 style={{ marginTop: 0, marginBottom: '24px', fontSize: '20px', color: '#0f172a' }}>
+        Assign Starting Prompt
+      </h3>
       
       {/* dropdown letting teachers pick if they want to write a prompt, use a random one, or skip it entirely */}
-      <div style={{ marginBottom: '10px' }}>
-        <label htmlFor="prompt-mode">Prompt Mode: </label>
-        <select id="prompt-mode" value={promptType} onChange={(e) => setPromptType(e.target.value)}>
-          <option value="custom">Write Custom Prompt</option>
-          <option value="random">Random Starting Phrase</option>
+      <div style={{ marginBottom: '24px' }}>
+        <label htmlFor="prompt-mode" style={labelStyle}>Prompt Mode</label>
+        <select id="prompt-mode" value={promptType} onChange={(e) => setPromptType(e.target.value)} style={inputStyle}>
+          <option value="custom">Write a Custom Prompt</option>
+          <option value="random">Pull a Random Prompt</option>
           <option value="none">No Prompt</option>
         </select>
       </div>
 
       {/* conditional render: only mount the text input area if the teacher selected 'custom' above */}
       {promptType === 'custom' && (
-        <textarea 
-          placeholder="Enter a story starter for your students..."
-          value={promptText}
-          onChange={(e) => setPromptText(e.target.value)}
-          style={{ width: '100%', height: '80px', marginBottom: '10px' }}
-        />
+        <div style={{ marginBottom: '24px' }}>
+          <label htmlFor="prompt-text" style={labelStyle}>Prompt Text</label>
+          <textarea 
+            id="prompt-text"
+            placeholder="Enter a story starter or prompt for your students..."
+            value={promptText}
+            onChange={(e) => setPromptText(e.target.value)}
+            style={{ ...inputStyle, height: '120px', resize: 'vertical', lineHeight: '1.5' }}
+          />
+        </div>
       )}
 
       {/* dropdown handling how the prompt gets distributed (breakout groups vs the whole class) */}
-      <div style={{ marginBottom: '10px' }}>
-        <label htmlFor="assignment-type">Assign Prompt To: </label>
-        <select id="assignment-type" value={assignmentType} onChange={(e) => setAssignmentType(e.target.value)}>
-          <option value="entire-class">Entire Class</option>
-          <option value="different-groups">Different Version per Group</option>
-          <option value="randomized">Randomize per Group</option>
+      <div style={{ marginBottom: '32px' }}>
+        <label htmlFor="assignment-type" style={labelStyle}>Classroom Distribution</label>
+        <select id="assignment-type" value={assignmentType} onChange={(e) => setAssignmentType(e.target.value)} style={inputStyle}>
+          <option value="entire-class">Entire Class (Same Prompt)</option>
+          <option value="different-groups">Different Version per Breakout Group</option>
+          <option value="randomized">Randomize per Breakout Group</option>
         </select>
       </div>
 
       {/* a button that runs the prompt submit function when the button is clicked */}
-      <button type="button" onClick={handlePromptSubmit}>
-        Submit
+      <button 
+        type="button" 
+        onClick={handlePromptSubmit}
+        style={{
+          width: '100%',
+          padding: '14px',
+          backgroundColor: '#72a096', 
+          color: 'white',
+          border: 'none',
+          borderRadius: '10px',
+          fontSize: '16px',
+          fontWeight: 'bold',
+          cursor: 'pointer',
+          transition: 'background-color 0.2s'
+        }}
+      >
+        Assign to Classroom
       </button>
       
       {submitStatus && (
-        <p style={{ marginTop: '10px', fontWeight: 'bold' }}>{submitStatus}</p>
+        <p style={{ 
+          marginTop: '20px', 
+          fontWeight: '600', 
+          fontSize: '15px', 
+          textAlign: 'center',
+          color: submitStatus.includes('Error') ? '#ef4444' : '#10b981' 
+        }}>
+          {submitStatus}
+        </p>
       )}
-      
     </div>
   );
 }
