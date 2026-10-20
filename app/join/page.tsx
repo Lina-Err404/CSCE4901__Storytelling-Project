@@ -108,30 +108,35 @@ export default function JoinLobbyPage() {
             className={styles.side}
             src="/assets/Moon_1.svg"
             alt=""
-            width={60}
-            height={36}
+            width={62}
+            height={47}
         />
         <button
             type="button"
             className={styles.joinButton}
             onClick={handleJoin}
-            disabled={!isComplete}
+            disabled={!isComplete || isLoading}
         >
-            <span>Join</span>
+            <span>{isLoading ? "Joining..." : "Join"}</span>
         </button>
         <Image
             className={styles.side}
             src="/assets/Moon_2.svg"
             alt=""
-            width={60}
-            height={36}
+            width={69}
+            height={47}
         />
-        </div>
-    
+      </div>
+
+      {error && (
+        <p role="alert" className={styles.tagline}>
+          {error}
+        </p>
+      )}
       <p className={styles.tagline}>Ready for your next story?</p>
 
       {/* Stars asset */}
-      <Image src="/assets/Stars_Element.svg" alt="" width={72} height={30} />
+      <Image src="/assets/Stars_Element.svg" alt="" width={90} height={34} />
     </main>
   );
 }
