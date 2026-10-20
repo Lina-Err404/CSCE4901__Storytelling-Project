@@ -66,6 +66,22 @@ function createLobbyRouter({ db, admin, requireTeacher, jwtSecret, getIo }) {
     }
   }
 
+  router.get('/lobbies', requireTeacher, async (req, res) => {
+    const { classId } = req.query;
+    if (typeof classId !== 'string' || classId.length === 0) {
+      return res.status(400).json({ error: 'classId is required' });
+    }
+
+    const snapshot = await db.collection('lobbies')
+      .where('teacherId', '==', req.user.uid)
+      .get();
+    return res.json({
+      lobbies: snapshot.docs
+        .map((doc) => ({ lobbyId: doc.id, ...doc.data() }))
+        .filter((lobby) => lobby.classId === classId && lobby.status !== 'closed'),
+    });
+  });
+
   router.post('/lobbies', requireTeacher, async (req, res) => {
     const { classId } = req.body || {};
     const minWords = req.body?.minWords ?? 0;

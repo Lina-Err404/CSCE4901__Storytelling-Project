@@ -7,6 +7,8 @@
     "node": ">=20"
   },
   "scripts": {
+    "dev:api": "node src/server.js",
+    "dev:emulator": "firebase emulators:start --only firestore --project demo-storytelling",
     "test": "firebase emulators:exec --only firestore --project demo-storytelling \"jest --runInBand\""
   },
   "dependencies": {

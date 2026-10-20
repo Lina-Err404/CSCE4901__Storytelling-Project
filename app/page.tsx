@@ -1,26 +1,177 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, type ChangeEvent } from "react";
 
-const students = [
-  { id: 1, name: "Alex Rivera", username: "AlexR", joined: true },
-  { id: 2, name: "Jamie Lee", username: "JamieL", joined: true },
-  { id: 3, name: "Maria Chen", username: "MariaC", joined: true },
-  { id: 4, name: "Daniel Brown", username: "DanielB", joined: false },
-  { id: 5, name: "Taylor Wilson", username: "TaylorW", joined: false },
-];
+type Student = { studentId: string; displayName: string };
+type Lobby = {
+  lobbyId: string;
+  joinCode: string;
+  status: "open" | "locked";
+};
+
+const teacherId = process.env.NEXT_PUBLIC_TEACHER_ID || "teacher-local";
+
+async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const headers = new Headers(options.headers);
+  headers.set("x-teacher-id", teacherId);
+  if (options.body && !(options.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  const response = await fetch(`/api${path}`, { ...options, headers });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || `Request failed (${response.status})`);
+  }
+  return payload as T;
+}
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState("Class Lobby");
   const [copied, setCopied] = useState(false);
-  const [started, setStarted] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [classId, setClassId] = useState("");
+  const [students, setStudents] = useState<Student[]>([]);
+  const [joinedIds, setJoinedIds] = useState<string[]>([]);
+  const [lobby, setLobby] = useState<Lobby | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
-  const lobbyCode = "ABC123";
-  const joinedCount = students.filter((s) => s.joined).length;
+  const lobbyCode = lobby?.joinCode || "------";
+  const joinedCount = joinedIds.length;
+  const started = lobby?.status === "locked";
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadWorkspace() {
+      try {
+        let { classes } = await api<{ classes: { classId: string }[] }>("/classes");
+        if (classes.length === 0) {
+          const created = await api<{ classId: string }>("/classes", {
+            method: "POST",
+            body: JSON.stringify({ name: "Classroom Writing Session" }),
+          });
+          classes = [created];
+        }
+
+        const selectedClassId = classes[0].classId;
+        const [roster, lobbies] = await Promise.all([
+          api<{ students: Student[] }>(`/classes/${selectedClassId}/roster`),
+          api<{ lobbies: Lobby[] }>(`/lobbies?classId=${selectedClassId}`),
+        ]);
+        if (cancelled) return;
+
+        setClassId(selectedClassId);
+        setStudents(roster.students);
+        const currentLobby = lobbies.lobbies.at(-1) || null;
+        setLobby(currentLobby);
+        if (currentLobby) {
+          const participation = await api<{ students: Student[] }>(
+            `/lobbies/${currentLobby.lobbyId}/students`,
+          );
+          if (!cancelled) {
+            setJoinedIds(participation.students.map((student) => student.studentId));
+          }
+        }
+      } catch (reason) {
+        if (!cancelled) {
+          setError(reason instanceof Error ? reason.message : "Could not load the class.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void loadWorkspace();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!lobby) return;
+
+    const refreshParticipation = async () => {
+      try {
+        const result = await api<{ students: Student[] }>(
+          `/lobbies/${lobby.lobbyId}/students`,
+        );
+        setJoinedIds(result.students.map((student) => student.studentId));
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : "Could not refresh participation.");
+      }
+    };
+
+    const timer = window.setInterval(refreshParticipation, 5000);
+    return () => window.clearInterval(timer);
+  }, [lobby]);
+
+  async function createLobby() {
+    if (!classId || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const created = await api<{ lobbyId: string; joinCode: string }>("/lobbies", {
+        method: "POST",
+        body: JSON.stringify({ classId }),
+      });
+      setLobby({ ...created, status: "open" });
+      setJoinedIds([]);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not create a lobby.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startSession() {
+    if (!lobby || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/lobbies/${lobby.lobbyId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "locked" }),
+      });
+      setLobby({ ...lobby, status: "locked" });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not start the session.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function importRoster(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file || !classId) return;
+
+    const body = new FormData();
+    body.set("file", file);
+    setBusy(true);
+    setError("");
+    try {
+      const result = await api<{ imported: number; rejected: { row: number; reason: string }[] }>(
+        `/classes/${classId}/roster`,
+        { method: "POST", body },
+      );
+      const roster = await api<{ students: Student[] }>(`/classes/${classId}/roster`);
+      setStudents(roster.students);
+      if (result.rejected.length) {
+        setError(`Imported ${result.imported}; ${result.rejected.length} row(s) were rejected.`);
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not import the roster.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function copyCode() {
+    if (!lobby) return;
     try {
       await navigator.clipboard.writeText(lobbyCode);
       setCopied(true);
@@ -113,6 +264,16 @@ export default function Home() {
           </header>
 
           <div className="mx-auto max-w-6xl space-y-6 p-5 md:p-8">
+            {error && (
+              <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+                {error}
+              </div>
+            )}
+            {loading && (
+              <p role="status" className="text-sm text-slate-500">
+                Connecting to your classroom...
+              </p>
+            )}
             {activeTab !== "Class Lobby" ? (
               <div className="rounded-2xl border border-slate-200 bg-white p-8">
                 <h2 className="text-xl font-bold">{activeTab}</h2>
@@ -142,7 +303,7 @@ export default function Home() {
                     </p>
                   </div>
                   <span className="w-fit rounded-full bg-emerald-100 px-4 py-2 text-sm font-semibold text-emerald-800">
-                    ● {started ? "Session started" : "Lobby open"}
+                    ● {started ? "Session started" : lobby ? "Lobby open" : "No active lobby"}
                   </span>
                 </div>
 
@@ -150,18 +311,18 @@ export default function Home() {
                   {[
                     {
                       label: "Students in class",
-                      value: "24",
-                      note: "Illustrative class roster",
+                      value: String(students.length),
+                      note: "Students on the class roster",
                     },
                     {
                       label: "Students joined",
                       value: String(joinedCount),
-                      note: "Demo participant data",
+                      note: "Live lobby participation",
                     },
                     {
                       label: "Waiting to join",
-                      value: String(students.length - joinedCount),
-                      note: "In the sample list",
+                      value: String(Math.max(0, students.length - joinedCount)),
+                      note: "Rostered students not yet in the lobby",
                     },
                   ].map((item) => (
                     <div
@@ -197,8 +358,28 @@ export default function Home() {
                           Only your class can participate
                         </p>
                         <p className="mt-1 text-sm leading-5 text-emerald-800">
-                          The backend must verify each student's class
+                          The backend verifies each student&apos;s class
                           membership before allowing them to join.
+                        </p>
+                      </div>
+
+                      <div className="mt-5 border-t border-slate-100 pt-4">
+                        <input
+                          id="roster-file"
+                          type="file"
+                          accept=".csv,text/csv"
+                          onChange={importRoster}
+                          disabled={busy || !classId}
+                          className="sr-only"
+                        />
+                        <label
+                          htmlFor="roster-file"
+                          className={`inline-flex cursor-pointer items-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 ${busy ? "pointer-events-none opacity-50" : ""}`}
+                        >
+                          {busy ? "Working..." : "Import student roster CSV"}
+                        </label>
+                        <p className="mt-2 text-xs text-slate-500">
+                          CSV columns: studentId,name
                         </p>
                       </div>
                     </div>
@@ -220,14 +401,24 @@ export default function Home() {
 
                       <button
                         onClick={copyCode}
+                        disabled={!lobby || copied}
                         className="mt-4 w-full rounded-xl border border-indigo-200 px-4 py-3 font-semibold text-indigo-700 transition hover:bg-indigo-50"
                       >
-                        {copied ? "✓ Code copied" : "▢ Copy lobby code"}
+                        {copied ? "Code copied" : "Copy lobby code"}
                       </button>
 
                       <p className="mt-3 text-center text-xs text-slate-400">
-                        Demo code — replace with the backend-generated code.
+                        {lobby ? "Share this code with students on your roster." : "Create a lobby to generate an invitation code."}
                       </p>
+                      {!lobby && (
+                        <button
+                          onClick={createLobby}
+                          disabled={busy || loading || !classId}
+                          className="mt-4 w-full rounded-lg bg-indigo-600 px-4 py-3 font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                        >
+                          Create class lobby
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -251,7 +442,7 @@ export default function Home() {
                         All students ({students.length})
                       </span>
                       <span className="rounded-lg px-3 py-2 text-slate-500">
-                        Joined ({joinedCount})
+                        Rostered ({students.length})
                       </span>
                     </div>
 
@@ -260,44 +451,51 @@ export default function Home() {
                         .slice(0, showAll ? students.length : 4)
                         .map((student) => (
                           <div
-                            key={student.id}
+                            key={student.studentId}
                             className="flex items-center justify-between gap-3 py-4"
                           >
                             <div className="flex min-w-0 items-center gap-3">
                               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-100 font-semibold text-violet-700">
-                                {student.name
+                                {student.displayName
                                   .split(" ")
                                   .map((part) => part[0])
                                   .join("")}
                               </div>
                               <div className="min-w-0">
                                 <p className="truncate font-semibold">
-                                  {student.name}
+                                  {student.displayName}
                                 </p>
                                 <p className="text-sm text-slate-500">
-                                  @{student.username}
+                                  ID: {student.studentId}
                                 </p>
                               </div>
                             </div>
                             <span
                               className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${
-                                student.joined
+                                joinedIds.includes(student.studentId)
                                   ? "bg-emerald-50 text-emerald-700"
                                   : "bg-slate-100 text-slate-500"
                               }`}
                             >
-                              {student.joined ? "● Joined" : "Not joined"}
+                              {joinedIds.includes(student.studentId) ? "Joined" : "Not joined"}
                             </span>
                           </div>
                         ))}
                     </div>
 
-                    <button
-                      onClick={() => setShowAll(!showAll)}
-                      className="mt-3 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                    >
-                      {showAll ? "Show fewer students" : "View all students"}
-                    </button>
+                    {students.length > 4 && (
+                      <button
+                        onClick={() => setShowAll(!showAll)}
+                        className="mt-3 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        {showAll ? "Show fewer students" : "View all students"}
+                      </button>
+                    )}
+                    {!students.length && !loading && (
+                      <p className="py-8 text-center text-sm text-slate-500">
+                        No students on the roster yet. Import a CSV to add the class list.
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -309,18 +507,16 @@ export default function Home() {
                     </p>
                   </div>
                   <button
-                    onClick={() => setStarted(true)}
-                    disabled={started}
+                    onClick={startSession}
+                    disabled={started || busy || !lobby}
                     className="rounded-xl bg-indigo-600 px-6 py-3 font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-400"
                   >
-                    {started ? "Session started" : "Start story session →"}
+                    {started ? "Session started" : lobby ? "Start story session" : "Create a lobby first"}
                   </button>
                 </div>
 
                 <p className="text-center text-xs leading-5 text-slate-400">
-                  Frontend prototype · Sample students and lobby code only.
-                  <br />
-                  Access restrictions must be enforced by the backend.
+                  Teacher auth is currently a development-only ID header. Replace it before deployment.
                 </p>
               </>
             )}
