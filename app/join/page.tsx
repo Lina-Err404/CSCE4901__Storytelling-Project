@@ -51,10 +51,30 @@ export default function JoinLobbyPage() {
     inputs.current[Math.min(pasted.length, CODE_LENGTH - 1)]?.focus();
   };
 
-  const handleJoin = () => {
-    if (!isComplete) return;
-    // TODO: validate the code with the backend before navigating
-    router.push(`/lobby/${code}`);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleJoin = async () => {
+    if (!isComplete || isLoading) return;
+    setError(null);
+    setIsLoading(true);
+    try {
+      const res = await fetch("/api/lobby/join", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lobbyCode: code }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(data?.error ?? "Unable to join lobby.");
+        return;
+      }
+      router.push(`/lobby/${data.code ?? code}`);
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
