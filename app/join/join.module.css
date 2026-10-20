@@ -52,8 +52,7 @@
   flex: 1;
   height: 64px;
   border: 0;
-  background: #e8e0db;
-  clip-path: var(--shape);
+  background: transparent;
   cursor: pointer;
   color: #12285a;
   font-family: inherit;
@@ -69,17 +68,22 @@
 }
 
 .joinButton::before {
+  inset: 0;
+  background: #e8e0db;
+}
+
+.joinButton::after {
   inset: 6px;
   background: var(--blue);
 }
 
-.joinButton::after {
-  inset: 9px;
-  background: #e8e0db;
-}
-
 .joinButton span {
-  position: relative;
+  position: absolute;
+  inset: 9px;
+  display: grid;
+  place-items: center;
+  background: #e8e0db;
+  clip-path: var(--shape);
   z-index: 1;
 }
 
