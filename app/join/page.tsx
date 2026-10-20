@@ -21,7 +21,11 @@ export default function JoinLobbyPage() {
   const clean = (value: string) => value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
 
   const handleChange = (index: number, value: string) => {
-    const next = clean(value).slice(-1);
+    const cleaned = clean(value);
+    const next =
+      cleaned.length > 1 && cleaned[0] !== chars[index]
+        ? cleaned[0]
+        : cleaned.slice(-1);
     setChars((prev) => prev.map((c, i) => (i === index ? next : c)));
     if (next && index < CODE_LENGTH - 1) inputs.current[index + 1]?.focus();
   };
@@ -29,6 +33,12 @@ export default function JoinLobbyPage() {
   const handleKeyDown = (index: number, e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Backspace" && !chars[index] && index > 0) {
       inputs.current[index - 1]?.focus();
+    } else if (e.key === "ArrowLeft" && index > 0) {
+      e.preventDefault();
+      inputs.current[index - 1]?.focus();
+    } else if (e.key === "ArrowRight" && index < CODE_LENGTH - 1) {
+      e.preventDefault();
+      inputs.current[index + 1]?.focus();
     }
     if (e.key === "Enter" && isComplete) handleJoin();
   };
