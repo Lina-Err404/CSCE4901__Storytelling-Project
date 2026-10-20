@@ -11,7 +11,7 @@ const {
   deleteFirebaseApp,
 } = require('./helpers');
 const { createLobbyRouter } = require('../src/lobby');
-const { requireTeacher } = require('../src');
+const requireTeacher = (req, res, next) => next();
 
 let testServer;
 let classId;
@@ -39,19 +39,27 @@ async function createLobby(overrides = {}) {
 }
 
 async function join(code = 'ABC234', studentId = 'student-one') {
-  return request(testServer.app).post('/lobbies/join').send({ code, studentId, name: 'Typed Name' });
+  return request(testServer.app)
+    .post('/lobbies/join')
+    .set('x-test-student-uid', studentId)
+    .send({ code, studentId, name: 'Typed Name' });
 }
 
 describe('lobby routes', () => {
-  test('creates an open lobby with a six-character code; consecutive codes differ', async () => {
+  test('creates one open lobby per class and permits a new one after close', async () => {
     const first = await createLobby();
     const second = await createLobby();
 
     expect(first.status).toBe(201);
     expect(first.body.joinCode).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
-    expect(second.status).toBe(201);
-    expect(second.body.joinCode).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
-    expect(second.body.joinCode).not.toBe(first.body.joinCode);
+    expect(second.status).toBe(409);
+    expect(second.body).toMatchObject({ error: 'Class already has an active lobby' });
+
+    await teacherRequest('patch', `/lobbies/${first.body.lobbyId}`).send({ status: 'closed' });
+    const reopened = await createLobby();
+    expect(reopened.status).toBe(201);
+    expect(reopened.body.joinCode).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
+    expect(reopened.body.joinCode).not.toBe(first.body.joinCode);
   });
 
   test('returns 403 when creating a lobby for a class owned by another teacher', async () => {
@@ -101,8 +109,35 @@ describe('lobby routes', () => {
     expect(seat.data()).toMatchObject({ displayName: 'Roster Name', kicked: false });
   });
 
+  test('rejects missing student authentication even when the body claims a roster ID', async () => {
+    await seedLobby();
+    await seedRoster(classId, [{ studentId: 'student-one', displayName: 'Roster Name' }]);
+
+    const response = await request(testServer.app)
+      .post('/lobbies/join')
+      .send({ code: 'ABC234', studentId: 'student-one', name: 'Claimed Name' });
+
+    expect(response.status).toBe(401);
+  });
+
+  test('ignores a body student ID that differs from the authenticated UID', async () => {
+    await seedLobby();
+    await seedRoster(classId, [{ studentId: 'student-one', displayName: 'Roster Name' }]);
+
+    const response = await request(testServer.app)
+      .post('/lobbies/join')
+      .set('x-test-student-uid', 'unrostered-user')
+      .send({ code: 'ABC234', studentId: 'student-one', name: 'Claimed Name' });
+
+    expect(response.status).toBe(401);
+    expect(response.body).toEqual({ error: 'Could not join' });
+  });
+
   test.each([
     ['wrong code', async () => {}],
+    ['code references a nonexistent lobby', async () => {
+      await db.collection('lobbyCodes').doc('ABC234').set({ lobbyId: 'missing-lobby' });
+    }],
     ['student not on roster', async () => {}],
     ['student rostered only in another class', async () => {
       await seedClass({ classId: 'other-class', teacherId: 'teacher-one' });
@@ -135,8 +170,8 @@ describe('lobby routes', () => {
     await seedLobby();
     await seedRoster(classId, [{ studentId: 'student-one', displayName: 'Roster Name' }]);
 
-    expect((await join()).status).toBe(200);
-    expect((await join()).status).toBe(200);
+    const responses = await Promise.all([join(), join()]);
+    expect(responses.map((response) => response.status)).toEqual([200, 200]);
     const seats = await db.collection('lobbies').doc('lobby-one').collection('students').get();
     expect(seats.size).toBe(1);
   });

@@ -2,10 +2,24 @@ const express = require('express');
 const http = require('http');
 const admin = require('firebase-admin');
 const { Server } = require('socket.io');
-const { createClassesRouter, createLobbyRouter, createSocketAuth, requireTeacher } = require('../src');
+const { createClassesRouter, createLobbyRouter, createSocketAuth } = require('../src');
 
 const PROJECT_ID = 'demo-storytelling';
 const JWT_SECRET = 'test-secret-that-is-at-least-thirty-two-characters-long';
+
+function requireTeacher(req, res, next) {
+  const uid = req.get('x-teacher-id');
+  if (!uid) return res.status(401).json({ error: 'Unauthorized' });
+  req.user = { uid, role: 'teacher' };
+  return next();
+}
+
+function requireStudent(req, res, next) {
+  const uid = req.get('x-test-student-uid');
+  if (!uid) return res.status(401).json({ error: 'Unauthorized' });
+  req.user = { uid, role: 'student' };
+  return next();
+}
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) {
   throw new Error('FIRESTORE_EMULATOR_HOST must be set by firebase emulators:exec');
@@ -26,7 +40,7 @@ async function clearFirestore() {
 }
 
 async function seedClass({ classId = 'class-one', teacherId = 'teacher-one', name = 'Class One' } = {}) {
-  await db.collection('classes').doc(classId).set({ teacherId, name });
+  await db.collection('classes').doc(classId).set({ teacherId, studentIds: [], name });
   return classId;
 }
 
@@ -68,7 +82,7 @@ async function startTestServer() {
 
   let io;
   app.use(createClassesRouter({ db, admin, requireTeacher }));
-  app.use(createLobbyRouter({ db, admin, requireTeacher, jwtSecret: JWT_SECRET, getIo: () => io }));
+  app.use(createLobbyRouter({ db, admin, requireTeacher, requireStudent, jwtSecret: JWT_SECRET, getIo: () => io }));
 
   const server = http.createServer(app);
   io = new Server(server);

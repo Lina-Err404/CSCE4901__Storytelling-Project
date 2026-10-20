@@ -8,8 +8,9 @@
   },
   "scripts": {
     "dev:api": "node src/server.js",
-    "dev:emulator": "firebase emulators:start --only firestore --project demo-storytelling",
-    "test": "firebase emulators:exec --only firestore --project demo-storytelling \"jest --runInBand\""
+    "dev:emulator": "firebase --config ../firebase.json emulators:start --only firestore,auth --project demo-storytelling",
+    "grant-teacher": "node src/grantTeacher.js",
+    "test": "firebase --config ../firebase.json emulators:exec --only firestore --project demo-storytelling \"jest --runInBand\""
   },
   "dependencies": {
     "csv-parse": "^6.1.0",

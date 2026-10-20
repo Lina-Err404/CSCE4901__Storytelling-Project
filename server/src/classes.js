@@ -2,7 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const { parse } = require('csv-parse/sync');
 
-const STUDENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
+const STUDENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const MAX_FILE_SIZE = 1024 * 1024;
 const MAX_ROWS = 500;
 const BATCH_SIZE = 400;
@@ -20,7 +20,7 @@ function validStudentId(value) {
   return typeof value === 'string' && STUDENT_ID_PATTERN.test(value);
 }
 
-function createClassesRouter({ db, admin, requireTeacher }) {
+function createClassesRouter({ db, admin, requireTeacher, getIo }) {
   const router = express.Router();
   const upload = multer({
     storage: multer.memoryStorage(),
@@ -63,6 +63,7 @@ function createClassesRouter({ db, admin, requireTeacher }) {
 
     const classRef = await db.collection('classes').add({
       teacherId: req.user.uid,
+      studentIds: [],
       name,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
@@ -130,10 +131,16 @@ function createClassesRouter({ db, admin, requireTeacher }) {
 
     for (let offset = 0; offset < accepted.length; offset += BATCH_SIZE) {
       const batch = db.batch();
-      accepted.slice(offset, offset + BATCH_SIZE).forEach(({ studentId, displayName }) => {
+      const batchRows = accepted.slice(offset, offset + BATCH_SIZE);
+      batchRows.forEach(({ studentId, displayName }) => {
         const studentRef = req.classRef.collection('roster').doc(studentId);
         batch.set(studentRef, { displayName }, { merge: true });
       });
+      if (batchRows.length > 0) {
+        batch.update(req.classRef, {
+          studentIds: admin.firestore.FieldValue.arrayUnion(...batchRows.map(({ studentId }) => studentId)),
+        });
+      }
       await batch.commit();
     }
 
@@ -151,7 +158,12 @@ function createClassesRouter({ db, admin, requireTeacher }) {
       return res.status(400).json({ error: 'Name must be 1-50 characters' });
     }
 
-    await req.classRef.collection('roster').doc(studentId).set({ displayName });
+    const batch = db.batch();
+    batch.set(req.classRef.collection('roster').doc(studentId), { displayName });
+    batch.update(req.classRef, {
+      studentIds: admin.firestore.FieldValue.arrayUnion(studentId),
+    });
+    await batch.commit();
     return res.json({ studentId, displayName });
   });
 
@@ -168,7 +180,44 @@ function createClassesRouter({ db, admin, requireTeacher }) {
       return res.status(400).json({ error: 'Invalid studentId' });
     }
 
-    await req.classRef.collection('roster').doc(studentId).delete();
+    const rosterRef = req.classRef.collection('roster').doc(studentId);
+
+    const activeLobbyId = await db.runTransaction(async (transaction) => {
+      const classSnapshot = await transaction.get(req.classRef);
+      const rosterSnapshot = await transaction.get(rosterRef);
+      if (!classSnapshot.exists || !rosterSnapshot.exists) return null;
+
+      const currentLobbyId = classSnapshot.data().activeLobbyId;
+      if (typeof currentLobbyId === 'string') {
+        const lobbyRef = db.collection('lobbies').doc(currentLobbyId);
+        const lobbySnapshot = await transaction.get(lobbyRef);
+        if (lobbySnapshot.exists && ['open', 'locked'].includes(lobbySnapshot.data().status)) {
+          const seatRef = lobbyRef.collection('students').doc(studentId);
+          const seatSnapshot = await transaction.get(seatRef);
+          if (seatSnapshot.exists) {
+            transaction.update(seatRef, { kicked: true });
+            transaction.delete(rosterRef);
+            transaction.update(req.classRef, {
+              studentIds: admin.firestore.FieldValue.arrayRemove(studentId),
+            });
+            return currentLobbyId;
+          }
+        }
+      }
+
+      transaction.delete(rosterRef);
+      transaction.update(req.classRef, {
+        studentIds: admin.firestore.FieldValue.arrayRemove(studentId),
+      });
+      return null;
+    });
+
+    const io = typeof getIo === 'function' ? getIo() : undefined;
+    if (io && activeLobbyId) {
+      const sockets = await io.in(`lobby:${activeLobbyId}`).fetchSockets();
+      const matchingSockets = sockets.filter((socket) => socket.data.studentId === studentId);
+      await Promise.all(matchingSockets.map((socket) => socket.disconnect(true)));
+    }
     return res.json({ deleted: true });
   });
 

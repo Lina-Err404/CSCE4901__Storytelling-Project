@@ -2,19 +2,24 @@
 "use client";
 
 import { useEffect, useState, type ChangeEvent } from "react";
+import { onAuthStateChanged, signOut, type User } from "firebase/auth";
+import { AuthScreen } from "./auth-screen";
+import { auth } from "./firebase-client";
+import { StudentLobby } from "./student-lobby";
 
 type Student = { studentId: string; displayName: string };
+type SchoolClass = { classId: string; name: string };
 type Lobby = {
   lobbyId: string;
   joinCode: string;
   status: "open" | "locked";
 };
 
-const teacherId = process.env.NEXT_PUBLIC_TEACHER_ID || "teacher-local";
-
 async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
-  headers.set("x-teacher-id", teacherId);
+  const currentUser = auth?.currentUser;
+  if (!currentUser) throw new Error("Sign in to continue.");
+  headers.set("Authorization", `Bearer ${await currentUser.getIdToken()}`);
   if (options.body && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
@@ -28,45 +33,106 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export default function Home() {
+  const [user, setUser] = useState<User | null>(null);
+  const [userRole, setUserRole] = useState<"teacher" | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authError, setAuthError] = useState("");
   const [activeTab, setActiveTab] = useState("Class Lobby");
   const [copied, setCopied] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [classId, setClassId] = useState("");
+  const [classes, setClasses] = useState<SchoolClass[]>([]);
+  const [newClassName, setNewClassName] = useState("");
   const [students, setStudents] = useState<Student[]>([]);
   const [joinedIds, setJoinedIds] = useState<string[]>([]);
   const [lobby, setLobby] = useState<Lobby | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const isTeacher = userRole === "teacher";
 
   const lobbyCode = lobby?.joinCode || "------";
   const joinedCount = joinedIds.length;
   const started = lobby?.status === "locked";
 
   useEffect(() => {
+    let current = true;
+    if (!auth) {
+      setAuthReady(true);
+      setAuthError("Firebase is not configured.");
+      return () => {
+        current = false;
+      };
+    }
+    const unsubscribe = onAuthStateChanged(auth, async (nextUser) => {
+      setUser(nextUser);
+      setUserRole(null);
+      setAuthError("");
+      if (nextUser) {
+        try {
+          const token = await nextUser.getIdTokenResult();
+          if (current && token.claims.role === "teacher") setUserRole("teacher");
+        } catch {
+          if (current) setAuthError("Could not verify your account role. Sign in again.");
+        }
+      }
+      if (current) setAuthReady(true);
+    });
+
+    return () => {
+      current = false;
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!auth || !user || !isTeacher) return;
     let cancelled = false;
 
-    async function loadWorkspace() {
+    async function loadClasses() {
+      setLoading(true);
       try {
-        let { classes } = await api<{ classes: { classId: string }[] }>("/classes");
-        if (classes.length === 0) {
-          const created = await api<{ classId: string }>("/classes", {
-            method: "POST",
-            body: JSON.stringify({ name: "Classroom Writing Session" }),
-          });
-          classes = [created];
+        const result = await api<{ classes: SchoolClass[] }>("/classes");
+        if (cancelled) return;
+        setClasses(result.classes);
+        setClassId((previous) => result.classes.some((item) => item.classId === previous)
+          ? previous
+          : result.classes[0]?.classId || "");
+      } catch (reason) {
+        if (!cancelled) {
+          setError(reason instanceof Error ? reason.message : "Could not load your classes.");
         }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
 
-        const selectedClassId = classes[0].classId;
+    void loadClasses();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, isTeacher]);
+
+  useEffect(() => {
+    if (!user || !isTeacher || !classId) {
+      setStudents([]);
+      setJoinedIds([]);
+      setLobby(null);
+      return;
+    }
+    let cancelled = false;
+
+    async function loadClass() {
+      setLoading(true);
+      setError("");
+      try {
         const [roster, lobbies] = await Promise.all([
-          api<{ students: Student[] }>(`/classes/${selectedClassId}/roster`),
-          api<{ lobbies: Lobby[] }>(`/lobbies?classId=${selectedClassId}`),
+          api<{ students: Student[] }>(`/classes/${classId}/roster`),
+          api<{ lobbies: Lobby[] }>(`/lobbies?classId=${encodeURIComponent(classId)}`),
         ]);
         if (cancelled) return;
-
-        setClassId(selectedClassId);
         setStudents(roster.students);
-        const currentLobby = lobbies.lobbies.at(-1) || null;
+        const currentLobby = lobbies.lobbies[0] || null;
         setLobby(currentLobby);
         if (currentLobby) {
           const participation = await api<{ students: Student[] }>(
@@ -75,21 +141,21 @@ export default function Home() {
           if (!cancelled) {
             setJoinedIds(participation.students.map((student) => student.studentId));
           }
+        } else {
+          setJoinedIds([]);
         }
       } catch (reason) {
-        if (!cancelled) {
-          setError(reason instanceof Error ? reason.message : "Could not load the class.");
-        }
+        if (!cancelled) setError(reason instanceof Error ? reason.message : "Could not load the class.");
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
 
-    void loadWorkspace();
+    void loadClass();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [user, isTeacher, classId]);
 
   useEffect(() => {
     if (!lobby) return;
@@ -170,6 +236,61 @@ export default function Home() {
     }
   }
 
+  async function createClass(event: ChangeEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = newClassName.trim();
+    if (!name || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const created = await api<SchoolClass>("/classes", {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      });
+      setClasses((current) => [...current, created]);
+      setClassId(created.classId);
+      setNewClassName("");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not create the class.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function closeLobby() {
+    if (!lobby || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/lobbies/${lobby.lobbyId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "closed" }),
+      });
+      setLobby(null);
+      setJoinedIds([]);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not close the lobby.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function kickStudent(studentId: string) {
+    if (!lobby || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/lobbies/${lobby.lobbyId}/students/${encodeURIComponent(studentId)}`, {
+        method: "DELETE",
+      });
+      setJoinedIds((current) => current.filter((id) => id !== studentId));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not remove the student.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function copyCode() {
     if (!lobby) return;
     try {
@@ -188,6 +309,19 @@ export default function Home() {
     { label: "Moderation", icon: "◇" },
     { label: "Settings", icon: "⚙" },
   ];
+
+  if (!authReady) {
+    return <main className="p-8 text-sm text-slate-600">Checking sign-in...</main>;
+  }
+  if (!user) return <AuthScreen />;
+  if (!isTeacher) {
+    return (
+      <>
+        <StudentLobby user={user} />
+        {authError && <p role="alert" className="fixed bottom-4 left-4 rounded bg-rose-50 p-3 text-sm text-rose-800">{authError}</p>}
+      </>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
@@ -258,9 +392,14 @@ export default function Home() {
                 {activeTab}
               </h1>
             </div>
-            <span className="rounded-full bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
-              ● Host
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="rounded-full bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
+                ● Teacher
+              </span>
+              <button onClick={() => auth && void signOut(auth)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold">
+                Sign out
+              </button>
+            </div>
           </header>
 
           <div className="mx-auto max-w-6xl space-y-6 p-5 md:p-8">
@@ -296,7 +435,7 @@ export default function Home() {
                       YOUR CLASS
                     </p>
                     <h2 className="mt-1 text-2xl font-bold">
-                      Classroom Writing Session
+                      {classes.find((item) => item.classId === classId)?.name || "Choose a class"}
                     </h2>
                     <p className="mt-2 text-slate-500">
                       Manage access and see which students have joined.
@@ -306,6 +445,33 @@ export default function Home() {
                     ● {started ? "Session started" : lobby ? "Lobby open" : "No active lobby"}
                   </span>
                 </div>
+
+                {classes.length > 0 ? (
+                  <label className="block max-w-sm text-sm font-semibold">
+                    Class
+                    <select
+                      value={classId}
+                      onChange={(event) => setClassId(event.target.value)}
+                      className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5"
+                    >
+                      {classes.map((item) => <option key={item.classId} value={item.classId}>{item.name}</option>)}
+                    </select>
+                  </label>
+                ) : !loading ? (
+                  <form onSubmit={createClass} className="flex max-w-lg flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4">
+                    <label className="min-w-56 flex-1 text-sm font-semibold">
+                      Create your first class
+                      <input
+                        required
+                        maxLength={80}
+                        value={newClassName}
+                        onChange={(event) => setNewClassName(event.target.value)}
+                        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5"
+                      />
+                    </label>
+                    <button disabled={busy} className="rounded-lg bg-indigo-700 px-4 py-2.5 font-semibold text-white disabled:opacity-50">Create class</button>
+                  </form>
+                ) : null}
 
                 <div className="grid gap-4 sm:grid-cols-3">
                   {[
@@ -419,6 +585,15 @@ export default function Home() {
                           Create class lobby
                         </button>
                       )}
+                      {lobby && !started && (
+                        <button
+                          onClick={closeLobby}
+                          disabled={busy}
+                          className="mt-3 w-full rounded-lg border border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                        >
+                          Close lobby
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -479,6 +654,16 @@ export default function Home() {
                             >
                               {joinedIds.includes(student.studentId) ? "Joined" : "Not joined"}
                             </span>
+                            {lobby && joinedIds.includes(student.studentId) && (
+                              <button
+                                onClick={() => void kickStudent(student.studentId)}
+                                disabled={busy}
+                                className="shrink-0 rounded-md border border-rose-200 px-2 py-1 text-xs font-semibold text-rose-700 disabled:opacity-50"
+                                aria-label={`Remove ${student.displayName} from lobby`}
+                              >
+                                Remove
+                              </button>
+                            )}
                           </div>
                         ))}
                     </div>

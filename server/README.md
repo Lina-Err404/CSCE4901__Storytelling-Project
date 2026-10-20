@@ -1,34 +1,27 @@
 # Storytelling Server Modules
 
-These CommonJS modules provide class roster management, host-lobby routes, and Socket.io student authentication. The application bootstrap owns Express, the HTTP server, Socket.io, Firebase Admin initialization, CORS, and environment loading.
+The API uses Firebase Admin only. `src/firebase.js` loads the repository-root `.env` with dotenv and initializes Application Default Credentials using `GOOGLE_APPLICATION_CREDENTIALS`.
 
 ## Wiring
 
-Pass the initialized Firestore `db`, Firebase Admin namespace, teacher-auth middleware, JWT secret, and a function that returns the Socket.io server into the factories:
+The R13 API is mounted at `/api` by `src/server.js`:
 
 ```js
-const { createClassesRouter, createLobbyRouter, createSocketAuth, requireTeacher } = require('./server/src');
-app.use(createClassesRouter({ db, admin, requireTeacher }));
-app.use(createLobbyRouter({ db, admin, requireTeacher, jwtSecret: process.env.JWT_SECRET, getIo: () => io }));
-io.use(createSocketAuth({ db, jwtSecret: process.env.JWT_SECRET }));
+POST /api/lobbies                  { "classId": "..." }
+POST /api/lobbies/:code/join       Authorization: Bearer <Firebase ID token>
 ```
 
-`createLobbyRouter` requires a `JWT_SECRET` of at least 32 characters. The test command starts the Firestore emulator and sets `FIRESTORE_EMULATOR_HOST`; the test helper refuses to run without that variable and initializes Firebase Admin with project ID `demo-storytelling`, without credentials. Production Firestore credentials and environment loading are owned by the application bootstrap.
+Both endpoints verify Firebase ID tokens; host creation additionally requires the `role: "teacher"` custom claim. Assign that claim to a provisioned account with `npm run grant-teacher -- <FIREBASE_UID>` from this directory. The Firebase Auth emulator is used during local development; no credentials are logged.
 
-Run the server package's test script from this directory with `npm test`.
+Run the API with `npm run dev:api` and the Firestore tests with `npm test` from this directory. The root `npm run dev` starts the app and emulators with local Firestore import/export persistence under the ignored `.firebase-data/` directory. To print scratch-case results against your configured Firebase project or emulator, run `node scratch.js`; that file is git-ignored and removes its temporary records.
 
 ## Data Model
 
-- `classes/{classId}` stores the owning `teacherId`, `name`, and `createdAt`.
-- `classes/{classId}/roster/{studentId}` stores each student's `displayName`.
-- `lobbies/{lobbyId}` stores its teacher, class, join code, status, game settings, and creation time.
-- `lobbyCodes/{code}` maps an active code to a lobby and is removed when that lobby closes.
-- `lobbies/{lobbyId}/students/{studentId}` stores the roster display name, join time, and kick state.
+- `classes/{classId}` retains existing class fields and has `studentIds` for roster enrollment.
+- `classes/{classId}/roster/{studentId}` remains the current roster display-name source.
+- `Lobbies/{code}` uses the required case-sensitive collection and stores the lobby's existing fields plus `hostId`, `classId`, `participantIds`, and `createdAt`.
 
 ## Known Gaps
 
-- Teacher authentication is currently the `x-teacher-id` header stub; it is not authentication and must be replaced by the owning teammate's implementation.
-- Removing a student from a class roster prevents future joins but does not revoke an existing lobby seat or an already-issued token.
-- There is no CORS configuration, production server entry point, or deploy configuration in this package.
-- No Firestore security rules are included; access control in these modules assumes requests pass through the hosting server.
-- The join-code endpoint uses in-memory rate-limit state, which is not shared across multiple server instances.
+- The root `firestore.rules` denies direct client reads and writes; service access is through the Admin-backed API.
+- Existing lowercase lobby modules remain for the earlier prototype; the R13 route is mounted from `lobbyRoutes.js` and uses `Lobbies/{code}`.

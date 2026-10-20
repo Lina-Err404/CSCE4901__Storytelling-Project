@@ -3,7 +3,9 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
 
-const STUDENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
+const STUDENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+const CLASS_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+const GAME_MODES = new Set(['divide']);
 const JOIN_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const JOIN_FAILURE = { error: 'Could not join' };
 
@@ -37,7 +39,7 @@ function generateJoinCode() {
   return joinCode;
 }
 
-function createLobbyRouter({ db, admin, requireTeacher, jwtSecret, getIo }) {
+function createLobbyRouter({ db, admin, requireTeacher, requireStudent, jwtSecret, getIo }) {
   if (typeof jwtSecret !== 'string' || jwtSecret.length < 32) {
     throw new Error('jwtSecret must be at least 32 characters');
   }
@@ -68,8 +70,13 @@ function createLobbyRouter({ db, admin, requireTeacher, jwtSecret, getIo }) {
 
   router.get('/lobbies', requireTeacher, async (req, res) => {
     const { classId } = req.query;
-    if (typeof classId !== 'string' || classId.length === 0) {
+    if (typeof classId !== 'string' || !CLASS_ID_PATTERN.test(classId)) {
       return res.status(400).json({ error: 'classId is required' });
+    }
+
+    const classSnapshot = await db.collection('classes').doc(classId).get();
+    if (!classSnapshot.exists || classSnapshot.data().teacherId !== req.user.uid) {
+      return res.status(403).json({ error: 'Forbidden' });
     }
 
     const snapshot = await db.collection('lobbies')
@@ -78,7 +85,12 @@ function createLobbyRouter({ db, admin, requireTeacher, jwtSecret, getIo }) {
     return res.json({
       lobbies: snapshot.docs
         .map((doc) => ({ lobbyId: doc.id, ...doc.data() }))
-        .filter((lobby) => lobby.classId === classId && lobby.status !== 'closed'),
+        .filter((lobby) => lobby.classId === classId && lobby.status !== 'closed')
+        .sort((first, second) => {
+          const firstCreated = first.createdAt?.toMillis?.() || 0;
+          const secondCreated = second.createdAt?.toMillis?.() || 0;
+          return secondCreated - firstCreated;
+        }),
     });
   });
 
@@ -88,7 +100,7 @@ function createLobbyRouter({ db, admin, requireTeacher, jwtSecret, getIo }) {
     const maxWords = req.body?.maxWords ?? 100;
     const gameMode = req.body?.gameMode ?? 'divide';
 
-    if (typeof classId !== 'string' || classId.length === 0) {
+    if (typeof classId !== 'string' || !CLASS_ID_PATTERN.test(classId)) {
       return res.status(400).json({ error: 'classId is required' });
     }
     if (
@@ -100,8 +112,12 @@ function createLobbyRouter({ db, admin, requireTeacher, jwtSecret, getIo }) {
     ) {
       return res.status(400).json({ error: 'Invalid word limits' });
     }
+    if (typeof gameMode !== 'string' || !GAME_MODES.has(gameMode)) {
+      return res.status(400).json({ error: 'Invalid game mode' });
+    }
 
-    const classSnapshot = await db.collection('classes').doc(classId).get();
+    const classRef = db.collection('classes').doc(classId);
+    const classSnapshot = await classRef.get();
     if (!classSnapshot.exists || classSnapshot.data().teacherId !== req.user.uid) {
       return res.status(403).json({ error: 'Forbidden' });
     }
@@ -112,7 +128,21 @@ function createLobbyRouter({ db, admin, requireTeacher, jwtSecret, getIo }) {
       const codeRef = db.collection('lobbyCodes').doc(joinCode);
 
       try {
-        await db.runTransaction(async (transaction) => {
+          const result = await db.runTransaction(async (transaction) => {
+            const currentClass = await transaction.get(classRef);
+            if (!currentClass.exists || currentClass.data().teacherId !== req.user.uid) {
+              return { forbidden: true };
+            }
+
+            const activeLobbyId = currentClass.data().activeLobbyId;
+            if (typeof activeLobbyId === 'string') {
+              const activeLobbyRef = db.collection('lobbies').doc(activeLobbyId);
+              const activeLobby = await transaction.get(activeLobbyRef);
+              if (activeLobby.exists && activeLobby.data().status !== 'closed') {
+                return { activeLobbyId };
+              }
+            }
+
           const existingCode = await transaction.get(codeRef);
           if (existingCode.exists) {
             throw new CodeCollisionError('Join code already exists');
@@ -129,7 +159,14 @@ function createLobbyRouter({ db, admin, requireTeacher, jwtSecret, getIo }) {
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
           });
           transaction.set(codeRef, { lobbyId: lobbyRef.id });
+            transaction.update(classRef, { activeLobbyId: lobbyRef.id });
+            return { lobbyId: lobbyRef.id };
         });
+
+          if (result.forbidden) return res.status(403).json({ error: 'Forbidden' });
+          if (result.activeLobbyId) {
+            return res.status(409).json({ error: 'Class already has an active lobby', ...result });
+          }
 
         return res.status(201).json({ lobbyId: lobbyRef.id, joinCode });
       } catch (error) {
@@ -142,12 +179,12 @@ function createLobbyRouter({ db, admin, requireTeacher, jwtSecret, getIo }) {
     return res.status(500).json({ error: 'Unable to create lobby' });
   });
 
-  router.post('/lobbies/join', joinLimiter, async (req, res) => {
-    const { code, studentId, name } = req.body || {};
+  router.post('/lobbies/join', joinLimiter, requireStudent, async (req, res) => {
+    const { code } = req.body || {};
+    const studentId = req.user.uid;
     if (
       typeof code !== 'string' ||
-      typeof studentId !== 'string' ||
-      typeof name !== 'string' ||
+      !/^[A-HJ-NP-Z2-9]{6}$/i.test(code.trim()) ||
       !validStudentId(studentId)
     ) {
       return res.status(401).json(JOIN_FAILURE);
@@ -165,42 +202,39 @@ function createLobbyRouter({ db, admin, requireTeacher, jwtSecret, getIo }) {
       }
 
       const lobbyRef = db.collection('lobbies').doc(lobbyId);
-      const lobbySnapshot = await lobbyRef.get();
-      if (!lobbySnapshot.exists) {
-        return res.status(401).json(JOIN_FAILURE);
-      }
-      const lobby = lobbySnapshot.data();
+      const joinResult = await db.runTransaction(async (transaction) => {
+        const lobbySnapshot = await transaction.get(lobbyRef);
+        if (!lobbySnapshot.exists || lobbySnapshot.data().status !== 'open') return null;
 
-      const rosterRef = db.collection('classes').doc(lobby.classId).collection('roster').doc(studentId);
-      const rosterSnapshot = await rosterRef.get();
-      const seatRef = lobbyRef.collection('students').doc(studentId);
-      const seatSnapshot = await seatRef.get();
+        const lobby = lobbySnapshot.data();
+        const rosterRef = db.collection('classes').doc(lobby.classId)
+          .collection('roster').doc(studentId);
+        const seatRef = lobbyRef.collection('students').doc(studentId);
+        const [rosterSnapshot, seatSnapshot] = await Promise.all([
+          transaction.get(rosterRef),
+          transaction.get(seatRef),
+        ]);
+        if (!rosterSnapshot.exists || seatSnapshot.data()?.kicked === true) return null;
 
-      if (
-        lobby.status !== 'open' ||
-        !rosterSnapshot.exists ||
-        seatSnapshot.data()?.kicked === true
-      ) {
-        return res.status(401).json(JOIN_FAILURE);
-      }
+        const displayName = cleanDisplayName(rosterSnapshot.data().displayName);
+        if (!displayName) return null;
 
-      const displayName = cleanDisplayName(rosterSnapshot.data().displayName);
-      if (!displayName) {
-        return res.status(401).json(JOIN_FAILURE);
-      }
+        transaction.set(seatRef, {
+          displayName,
+          joinedAt: admin.firestore.FieldValue.serverTimestamp(),
+          kicked: false,
+        }, { merge: true });
+        return { displayName };
+      });
 
-      await seatRef.set({
-        displayName,
-        joinedAt: admin.firestore.FieldValue.serverTimestamp(),
-        kicked: false,
-      }, { merge: true });
+      if (!joinResult) return res.status(401).json(JOIN_FAILURE);
 
       const token = jwt.sign(
         { role: 'student', lobbyId, studentId },
         jwtSecret,
         { algorithm: 'HS256', expiresIn: '4h' },
       );
-      return res.json({ token, lobbyId, displayName });
+      return res.json({ token, lobbyId, displayName: joinResult.displayName });
     } catch (error) {
       return res.status(500).json({ error: 'Internal server error' });
     }
@@ -219,11 +253,17 @@ function createLobbyRouter({ db, admin, requireTeacher, jwtSecret, getIo }) {
     batch.update(req.lobbyRef, { status });
     if (status === 'closed') {
       batch.delete(db.collection('lobbyCodes').doc(req.lobbyData.joinCode));
+      const classRef = db.collection('classes').doc(req.lobbyData.classId);
+      const classSnapshot = await classRef.get();
+      if (classSnapshot.data()?.activeLobbyId === req.params.id) {
+        batch.update(classRef, { activeLobbyId: null });
+      }
     }
     await batch.commit();
 
+    const io = typeof getIo === 'function' ? getIo() : undefined;
+    io?.to(`lobby:${req.params.id}`).emit('lobby:status', { lobbyId: req.params.id, status });
     if (status === 'closed') {
-      const io = typeof getIo === 'function' ? getIo() : undefined;
       io?.in(`lobby:${req.params.id}`).disconnectSockets(true);
     }
 

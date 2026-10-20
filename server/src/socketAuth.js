@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 
-const STUDENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
+const STUDENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
 function createSocketAuth({ db, jwtSecret }) {
   return async function socketAuth(socket, next) {

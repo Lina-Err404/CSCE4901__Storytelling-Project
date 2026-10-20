@@ -3,6 +3,7 @@ const {
   db,
   clearFirestore,
   seedClass,
+  seedLobby,
   startTestServer,
   deleteFirebaseApp,
 } = require('./helpers');
@@ -36,6 +37,7 @@ describe('class roster routes', () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ imported: 2, rejected: [] });
     const roster = await db.collection('classes').doc(classId).collection('roster').get();
+    expect((await db.collection('classes').doc(classId).get()).data().studentIds).toEqual(['s-1', 's-2']);
     expect(roster.docs.map((doc) => [doc.id, doc.data().displayName])).toEqual([
       ['s-1', 'Ada'],
       ['s-2', 'Grace'],
@@ -96,5 +98,24 @@ describe('class roster routes', () => {
       expect(response.status).toBe(403);
       expect(response.body).toEqual({ error: 'Forbidden' });
     }
+  });
+
+  test('removing a roster entry revokes the student seat in the active lobby', async () => {
+    await teacherRequest('put', `/classes/${classId}/roster/student-one`)
+      .send({ name: 'Roster Student' });
+    await seedLobby({ classId });
+    await db.collection('classes').doc(classId).update({ activeLobbyId: 'lobby-one' });
+    const seatRef = db.collection('lobbies').doc('lobby-one').collection('students').doc('student-one');
+    await seatRef.set({ displayName: 'Roster Student', kicked: false });
+    expect((await db.collection('classes').doc(classId).get()).data().activeLobbyId).toBe('lobby-one');
+    expect((await db.collection('lobbies').doc('lobby-one').get()).data().status).toBe('open');
+    expect((await seatRef.get()).data().kicked).toBe(false);
+
+    const response = await teacherRequest('delete', `/classes/${classId}/roster/student-one`);
+
+    expect(response.status).toBe(200);
+    expect((await seatRef.get()).data().kicked).toBe(true);
+    expect((await db.collection('classes').doc(classId).collection('roster').doc('student-one').get()).exists).toBe(false);
+    expect((await db.collection('classes').doc(classId).get()).data().studentIds).not.toContain('student-one');
   });
 });
