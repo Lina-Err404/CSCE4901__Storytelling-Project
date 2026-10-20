@@ -10,6 +10,7 @@
 //     feedbackUpdatedAt, approvedAt   – timestamps
 //
 // The class library (R11) should only show stories where status == "approved".
+// Keep the ReviewStatus values stable so R11 can rely on them.
 import {
   doc,
   getDoc,
@@ -31,37 +32,17 @@ export type Story = {
   status: ReviewStatus;
 };
 
-// Sample story used to create the first document if it doesn't exist yet.
-// Remove this once real completed stories are being saved by the writing flow.
-const SAMPLE_STORY = {
-  title: "The Secret Door",
-  group: "Group 1",
-  authors: "Heather, Marcus, and Sam",
-  text: [
-    "Maya found a tiny golden key beneath the library window. Attached to it was a note: Find the door that nobody sees.",
-    "She asked her friends to help. Together, they discovered a door hidden behind a shelf of dusty books. The key fit perfectly.",
-    "Inside was a garden filled with glowing flowers. They decided to protect its secret and return every afternoon for a new adventure.",
-  ],
-};
-
 function storyRef(storyId: string) {
   return doc(db, "stories", storyId);
 }
 
 // Load a completed story and its current review status.
-export async function loadStory(storyId: string): Promise<Story> {
-  const ref = storyRef(storyId);
-  const snapshot = await getDoc(ref);
+// Returns null if the story does not exist. This function only reads.
+export async function loadStory(storyId: string): Promise<Story | null> {
+  const snapshot = await getDoc(storyRef(storyId));
 
   if (!snapshot.exists()) {
-    // First run: create the sample story so there is something to review.
-    await setDoc(ref, {
-      ...SAMPLE_STORY,
-      feedback: "",
-      status: "pending",
-      createdAt: serverTimestamp(),
-    });
-    return { id: storyId, ...SAMPLE_STORY, feedback: "", status: "pending" };
+    return null;
   }
 
   const data = snapshot.data();
@@ -76,7 +57,7 @@ export async function loadStory(storyId: string): Promise<Story> {
   };
 }
 
-// Save the teacher's feedback for a story.
+// Save the teacher's feedback for a story. An empty string clears it.
 export async function saveFeedback(storyId: string, feedback: string) {
   await updateDoc(storyRef(storyId), {
     feedback,
@@ -89,5 +70,23 @@ export async function approveStory(storyId: string) {
   await updateDoc(storyRef(storyId), {
     status: "approved",
     approvedAt: serverTimestamp(),
+  });
+}
+
+// Development only: creates a sample story to review.
+// Never called automatically; run it on purpose when you need test data.
+export async function seedSampleStory(storyId = "story-1") {
+  await setDoc(storyRef(storyId), {
+    title: "The Secret Door",
+    group: "Group 1",
+    authors: "Heather, Marcus, and Sam",
+    text: [
+      "Maya found a tiny golden key beneath the library window. Attached to it was a note: Find the door that nobody sees.",
+      "She asked her friends to help. Together, they discovered a door hidden behind a shelf of dusty books. The key fit perfectly.",
+      "Inside was a garden filled with glowing flowers. They decided to protect its secret and return every afternoon for a new adventure.",
+    ],
+    feedback: "",
+    status: "pending",
+    createdAt: serverTimestamp(),
   });
 }

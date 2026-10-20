@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { use, useEffect, useState } from "react";
 import {
   approveStory as approveStoryInDb,
   loadStory,
@@ -8,10 +8,18 @@ import {
   type Story,
 } from "@/lib/storyReview";
 
-// Which story to review. Later this can come from the URL or a review queue.
-const STORY_ID = "story-1";
+// The story to review comes from the URL, e.g. /teacher-review?id=story-1.
+// Falls back to "story-1" until a review queue links to each story.
+const DEFAULT_STORY_ID = "story-1";
 
-export default function TeacherReviewPage() {
+export default function TeacherReviewPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const { id } = use(searchParams);
+  const storyId = typeof id === "string" && id ? id : DEFAULT_STORY_ID;
+
   const [story, setStory] = useState<Story | null>(null);
   const [loadError, setLoadError] = useState("");
   const [feedback, setFeedback] = useState("");
@@ -19,31 +27,49 @@ export default function TeacherReviewPage() {
   const [approved, setApproved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
 
   // Load the story and its saved feedback/approval from Firestore.
   useEffect(() => {
-    loadStory(STORY_ID)
+    // Ignore results that arrive after the page has unmounted or changed story.
+    let active = true;
+    loadStory(storyId)
       .then((loaded) => {
+        if (!active) return;
+        if (!loaded) {
+          setLoadError(`Story "${storyId}" was not found.`);
+          return;
+        }
         setStory(loaded);
         setFeedback(loaded.feedback);
         setSavedFeedback(loaded.feedback);
         setApproved(loaded.status === "approved");
       })
       .catch((error) => {
+        if (!active) return;
         console.error("Failed to load story", error);
         setLoadError("Could not load this story. Please try again.");
       });
-  }, []);
+    return () => {
+      active = false;
+    };
+  }, [storyId, reloadKey]);
+
+  // Try loading again after an error, without reloading the browser tab.
+  function retryLoad() {
+    setLoadError("");
+    setReloadKey((key) => key + 1);
+  }
 
   // Save feedback to Firestore so it stays after a refresh.
   async function saveFeedback() {
     const trimmed = feedback.trim();
     setSaving(true);
     try {
-      await saveFeedbackInDb(STORY_ID, trimmed);
+      await saveFeedbackInDb(storyId, trimmed);
       setSavedFeedback(trimmed);
       setFeedback(trimmed);
-      setMessage("Feedback saved.");
+      setMessage(trimmed ? "Feedback saved." : "Feedback cleared.");
     } catch (error) {
       console.error("Failed to save feedback", error);
       setMessage("Could not save feedback. Please try again.");
@@ -56,7 +82,7 @@ export default function TeacherReviewPage() {
   async function approveStory() {
     setSaving(true);
     try {
-      await approveStoryInDb(STORY_ID);
+      await approveStoryInDb(storyId);
       setApproved(true);
       setMessage("Story approved.");
     } catch (error) {
@@ -70,9 +96,18 @@ export default function TeacherReviewPage() {
   if (loadError || !story) {
     return (
       <main className="min-h-screen bg-[#1e4d85] px-4 py-8 text-white sm:px-8">
-        <p role="status" className="mx-auto max-w-6xl">
-          {loadError || "Loading story..."}
-        </p>
+        <div role="status" className="mx-auto max-w-6xl">
+          <p>{loadError || "Loading story..."}</p>
+          {loadError && (
+            <button
+              type="button"
+              onClick={retryLoad}
+              className="mt-4 rounded-lg bg-white px-4 py-2 font-semibold text-slate-900 hover:bg-blue-50"
+            >
+              Try Again
+            </button>
+          )}
+        </div>
       </main>
     );
   }
@@ -140,7 +175,7 @@ export default function TeacherReviewPage() {
               onClick={saveFeedback}
               disabled={
                 saving ||
-                !feedback.trim() ||
+                (!feedback.trim() && !savedFeedback) ||
                 feedback.trim() === savedFeedback
               }
               className="mt-3 w-full rounded-lg bg-[#00566b] px-4 py-3 font-semibold text-white hover:bg-[#004353] disabled:cursor-not-allowed disabled:opacity-50"

@@ -4,6 +4,13 @@
 import { getApp, getApps, initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 
+// Fail fast with a clear message if .env.local is missing.
+if (!process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID) {
+  throw new Error(
+    "Missing NEXT_PUBLIC_FIREBASE_PROJECT_ID. Copy .env.example to .env.local and fill in the Firebase config."
+  );
+}
+
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
