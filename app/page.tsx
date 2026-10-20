@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 export default function Home() {
   return (
@@ -62,8 +63,10 @@ export default function Home() {
           >
             Documentation
           </a>
+          <Link href= "/manually-assigned"> Click here</Link> {/*TEMPORARY: I didn't know what page to use to link to the breakout room page. */}
         </div>
       </main>
     </div>
   );
+  
 }
