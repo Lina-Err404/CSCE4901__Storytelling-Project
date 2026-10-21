@@ -26,9 +26,14 @@ if (process.env.GOOGLE_APPLICATION_CREDENTIALS && !path.isAbsolute(process.env.G
   );
 }
 
+const projectId = process.env.GCLOUD_PROJECT || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'demo-storytelling';
 const app = admin.apps.length
   ? admin.app()
-  : admin.initializeApp({ credential: admin.credential.applicationDefault() });
+  : admin.initializeApp(
+      process.env.FIREBASE_AUTH_EMULATOR_HOST || process.env.FIRESTORE_EMULATOR_HOST
+        ? { projectId }
+        : { credential: admin.credential.applicationDefault(), projectId },
+    );
 const db = admin.firestore(app);
 
 module.exports = { admin, db };
