@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState, type ChangeEvent } from "react";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { AuthScreen } from "./auth-screen";
 import { auth, authConfigurationMissing } from "./firebase-client";
@@ -20,9 +20,17 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const currentUser = auth?.currentUser;
 
   if (!currentUser) {
-    throw new Error("Sign in is required.");
+    if (process.env.NODE_ENV !== "production" && (
+      process.env.NEXT_PUBLIC_ALLOW_DEV_MODE === "true" ||
+      process.env.NEXT_PUBLIC_USE_AUTH_EMULATOR === "true"
+    )) {
+      headers.set("x-teacher-id", "local-dev-teacher");
+    } else {
+      throw new Error("Sign in is required.");
+    }
+  } else {
+    headers.set("Authorization", `Bearer ${await currentUser.getIdToken()}`);
   }
-  headers.set("Authorization", `Bearer ${await currentUser.getIdToken()}`);
 
   if (options.body && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
@@ -37,10 +45,13 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export default function Home() {
-  const demoMode = process.env.NODE_ENV === "development" || process.env.NEXT_PUBLIC_USE_AUTH_EMULATOR === "true";
-  const [user, setUser] = useState<User | null>(() => demoMode ? ({ uid: "local-dev-teacher" } as User) : null);
-  const [userRole, setUserRole] = useState<"teacher" | null>(() => demoMode ? "teacher" : null);
-  const [authReady, setAuthReady] = useState(demoMode);
+  const devMode = process.env.NODE_ENV !== "production" && (
+    process.env.NEXT_PUBLIC_ALLOW_DEV_MODE === "true" ||
+    process.env.NEXT_PUBLIC_USE_AUTH_EMULATOR === "true"
+  );
+  const [user, setUser] = useState<User | null>(() => devMode ? ({ uid: "local-dev-teacher" } as User) : null);
+  const [userRole, setUserRole] = useState<"teacher" | null>(() => devMode ? "teacher" : null);
+  const [authReady, setAuthReady] = useState(devMode);
   const [authError, setAuthError] = useState("");
   const [activeTab, setActiveTab] = useState("Class Lobby");
   const [copied, setCopied] = useState(false);
@@ -54,8 +65,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const devBypass = demoMode || !auth || authConfigurationMissing;
-  const isTeacher = userRole === "teacher" || devBypass;
+  const isTeacher = userRole === "teacher";
 
   const lobbyCode = lobby?.joinCode || "------";
   const joinedCount = joinedIds.length;
@@ -63,11 +73,20 @@ export default function Home() {
 
   useEffect(() => {
     let current = true;
-    if (demoMode || !auth || authConfigurationMissing) {
+    if (devMode) {
       setUser({ uid: "local-dev-teacher" } as User);
       setUserRole("teacher");
       setAuthReady(true);
-      setAuthError("Local demo mode enabled. Opening the host lobby.");
+      setAuthError("Local dev mode enabled. Opening the host lobby.");
+      return () => {
+        current = false;
+      };
+    }
+    if (!auth || authConfigurationMissing) {
+      setUser(null);
+      setUserRole(null);
+      setAuthReady(true);
+      setAuthError("Firebase auth is not configured for this app.");
       return () => {
         current = false;
       };
@@ -108,14 +127,7 @@ export default function Home() {
           : result.classes[0]?.classId || "");
       } catch (reason) {
         if (!cancelled) {
-          if (demoMode) {
-            const demoClass = { classId: "demo-class", name: "Demo Class" };
-            setClasses([demoClass]);
-            setClassId(demoClass.classId);
-            setError("");
-          } else {
-            setError(reason instanceof Error ? reason.message : "Could not load your classes.");
-          }
+          setError(reason instanceof Error ? reason.message : "Could not load your classes.");
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -167,14 +179,7 @@ export default function Home() {
         }
       } catch (reason) {
         if (!cancelled) {
-          if (demoMode) {
-            setStudents([]);
-            setJoinedIds([]);
-            setLobby(null);
-            setError("");
-          } else {
-            setError(reason instanceof Error ? reason.message : "Could not load the class.");
-          }
+          setError(reason instanceof Error ? reason.message : "Could not load the class.");
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -266,7 +271,7 @@ export default function Home() {
     }
   }
 
-  async function createClass(event: ChangeEvent<HTMLFormElement>) {
+  async function createClass(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const name = newClassName.trim();
     if (!name || busy) return;
@@ -343,8 +348,8 @@ export default function Home() {
   if (!authReady) {
     return <main className="p-8 text-sm text-slate-600">Checking sign-in...</main>;
   }
-  if (!devBypass && !user) return <AuthScreen />;
-  if (!devBypass && !isTeacher) {
+  if (!user) return <AuthScreen />;
+  if (!isTeacher) {
     return (
       <>
         <StudentLobby user={user as User} />
@@ -551,7 +556,7 @@ export default function Home() {
                           Code-based access
                         </p>
                         <p className="mt-1 text-sm leading-5 text-slate-600">
-                          Any student with a valid lobby code can join this session.
+                          Only students on your roster with a valid lobby code can join this session.
                         </p>
                       </div>
 

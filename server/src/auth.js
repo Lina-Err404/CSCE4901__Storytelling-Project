@@ -1,9 +1,25 @@
 function createFirebaseAuthMiddleware({ admin, requiredRole, allowedRoles }) {
+  const devBypassEnabled = process.env.NODE_ENV !== 'production' && (
+    process.env.ALLOW_DEV_MODE === 'true' ||
+    process.env.USE_AUTH_EMULATOR === 'true'
+  );
+
   return async function authenticate(req, res, next) {
     const authorization = req.get('authorization');
     const match = typeof authorization === 'string'
       ? authorization.match(/^Bearer\s+([^\s]+)$/i)
       : null;
+
+    if (devBypassEnabled) {
+      const devTeacherId = req.get('x-teacher-id');
+      const devStudentId = req.get('x-test-student-uid');
+      const devUid = devTeacherId || devStudentId;
+      if (typeof devUid === 'string' && devUid.length > 0) {
+        const role = requiredRole || (allowedRoles && allowedRoles.includes('student') ? 'student' : 'teacher');
+        req.user = { uid: devUid, role };
+        return next();
+      }
+    }
 
     if (!match) {
       return res.status(401).json({ error: 'Unauthorized' });

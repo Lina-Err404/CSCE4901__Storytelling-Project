@@ -13,7 +13,6 @@
     "test": "firebase --config ../firebase.json emulators:exec --only firestore --project demo-storytelling \"jest --runInBand\""
   },
   "dependencies": {
-  "dependencies": {
     "csv-parse": "^6.1.0",
     "dotenv": "^18.0.8",
     "express": "^5.1.0",
@@ -26,5 +25,7 @@
   "devDependencies": {
     "firebase-tools": "^14.22.0",
     "jest": "^30.2.0",
+    "socket.io-client": "^4.8.1",
+    "supertest": "^7.1.4"
   }
 }
