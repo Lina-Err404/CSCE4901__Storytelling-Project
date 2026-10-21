@@ -8,7 +8,14 @@ const processes = [
     name: "web",
     command: process.execPath,
     args: ["node_modules/next/dist/bin/next", "dev"],
-    env: { ...process.env, NEXT_PUBLIC_USE_AUTH_EMULATOR: "true" },
+    env: {
+      ...process.env,
+      NEXT_PUBLIC_USE_AUTH_EMULATOR: "true",
+      FIRESTORE_EMULATOR_HOST:
+        process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8080",
+      FIREBASE_AUTH_EMULATOR_HOST:
+        process.env.FIREBASE_AUTH_EMULATOR_HOST || "127.0.0.1:9099",
+    },
   },
   {
     name: "firestore",
