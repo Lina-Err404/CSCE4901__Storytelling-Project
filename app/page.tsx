@@ -1,69 +1,387 @@
-import Image from "next/image";
+"use client";
+
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { CoverBook, CoverFrame } from "@/components/auth/CoverArtwork";
+import { logIn, signUp } from "@/app/Login_Signup_Backend/authServiceFB";
+
+type AuthView =
+  | "roleSelection"
+  | "teacherLogin"
+  | "teacherSignup"
+  | "studentLogin";
+
+function updateFormValidity(form: HTMLFormElement) {
+  // Keep native required/email checks and reject blank names or usernames.
+  for (const input of form.querySelectorAll<HTMLInputElement>('input[type="text"]')) {
+    input.setCustomValidity(
+      input.value.length > 0 && !input.value.trim()
+        ? "Please enter a value other than spaces."
+        : "",
+    );
+  }
+
+  const password = form.elements.namedItem("password") as HTMLInputElement;
+  const confirmation = form.elements.namedItem("confirmPassword") as HTMLInputElement | null;
+  if (confirmation) {
+    // Compare exactly; never trim or otherwise modify passwords.
+    confirmation.setCustomValidity(
+      confirmation.value && confirmation.value !== password.value
+        ? "Passwords do not match."
+        : "",
+    );
+  }
+}
 
 export default function Home() {
+  const [view, setView] = useState<AuthView>("roleSelection");
+  const [submissionNotice, setSubmissionNotice] = useState("");
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const hasNavigated = useRef(false);
+
+  const isInterior = view !== "roleSelection";
+
+  function changeView(nextView: AuthView) {
+    hasNavigated.current = true;
+    setSubmissionNotice("");
+    setView(nextView);
+  }
+
+  function handleFormInput(event: FormEvent<HTMLFormElement>) {
+    setSubmissionNotice("");
+    updateFormValidity(event.currentTarget);
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmissionNotice("");
+    const form = event.currentTarget;
+    // Recheck on submit too, including values supplied by autofill.
+    updateFormValidity(form);
+    if (!form.reportValidity()) return;
+
+    const formData = new FormData(form);
+    const email = String(formData.get("email") ?? formData.get("username") ?? "").trim();
+    const password = String(formData.get("password") ?? "");
+    const firstName = String(formData.get("firstName") ?? "").trim();
+    const lastName = String(formData.get("lastName") ?? "").trim();
+
+    try {
+      if (view === "teacherSignup") {
+        await signUp(email, password, firstName, lastName);
+        setSubmissionNotice("Account created.");
+      } else if (view === "teacherLogin") {
+        await logIn(email, password);
+        setSubmissionNotice("Logged in.");
+      }
+    } catch (err) {
+      setSubmissionNotice(err instanceof Error ? err.message : "Authentication failed.");
+    }
+  }
+
+  useEffect(() => {
+    if (hasNavigated.current) {
+      headingRef.current?.focus({ preventScroll: true });
+      window.scrollTo({ top: 0, behavior: "instant" });
+    }
+  }, [view]);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
+    <main className={`auth-page ${isInterior ? "auth-page-interior" : "storybook-cover"}`}>
+      {!isInterior && <CoverFrame />}
+      {isInterior && (
+        <div className="auth-garden" aria-hidden="true">
+          <span className="garden-decoration garden-top-left" />
+          <span className="garden-decoration garden-top-right" />
+          <span className="garden-decoration garden-bottom-left" />
+          <span className="garden-decoration garden-bottom-right" />
+          <span className="garden-decoration garden-leaf garden-leaf-left" />
+          <span className="garden-decoration garden-leaf garden-leaf-right" />
+          <span className="garden-decoration garden-petal garden-petal-left" />
+          <span className="garden-decoration garden-petal garden-petal-right" />
+          <span className="garden-decoration garden-butterfly" />
+          {/* Optional breeze: remove this group to disable the extra effect. */}
+          <div className="garden-breeze">
+            <span className="breeze-particle breeze-leaf" />
+            <span className="breeze-particle breeze-petal" />
+          </div>
+        </div>
+      )}
+
+      <div
+        className={`auth-content ${
+          isInterior ? "auth-content-interior" : ""
+        }`}
+      >
+        <header className="auth-header">
+          {!isInterior && <CoverBook />}
+          <h1 className="app-title">
+            <span>COLLAB</span>
+            <span>STORYTELLING</span>
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+
+          <div className="title-divider" aria-hidden="true">
+            <span className="divider-line" />
+            <span className="divider-symbol">◇</span>
+            <span className="divider-line" />
+          </div>
+        </header>
+
+        {view === "roleSelection" && (
+          <section
+            className="auth-view role-selection"
+            aria-labelledby="role-heading"
           >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            <h2
+              id="role-heading"
+              className="sr-only"
+              ref={headingRef}
+              tabIndex={-1}
+            >
+              Choose your role
+            </h2>
+
+            <div className="role-options">
+              <button
+                type="button"
+                className="role-button teacher-button"
+                onClick={() => changeView("teacherLogin")}
+              >
+                Teacher
+              </button>
+
+              <button
+                type="button"
+                className="role-button student-button"
+                onClick={() => changeView("studentLogin")}
+              >
+                Student
+              </button>
+            </div>
+          </section>
+        )}
+
+        {view === "teacherLogin" && (
+          <section
+            className="auth-view form-view login-view"
+            aria-labelledby="login-heading"
           >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+            <div className="view-heading">
+              <h2 id="login-heading" ref={headingRef} tabIndex={-1}>
+                Teacher Login
+              </h2>
+              <p>Welcome back to your storytelling classroom.</p>
+            </div>
+
+            <form
+              className="auth-form"
+              aria-describedby="login-note"
+              noValidate
+              onInput={handleFormInput}
+              onSubmit={handleSubmit}
+            >
+              <label className="form-field">
+                <span>Email</span>
+                <input
+                  type="email"
+                  name="email"
+                  placeholder="Enter your email"
+                  autoComplete="email"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  required
+                />
+              </label>
+
+              <label className="form-field">
+                <span>Password</span>
+                <input
+                  type="password"
+                  name="password"
+                  placeholder="Enter your password"
+                  autoComplete="current-password"
+                  required
+                />
+              </label>
+
+              <button
+                type="button"
+                className="text-button recovery-link"
+                disabled
+              >
+                Forgot password?
+                <span className="availability-note">Coming soon</span>
+              </button>
+
+              <button
+                type="submit"
+                className="primary-button"
+                aria-describedby="login-note"
+              >
+                Log In
+              </button>
+              <p id="login-note" className="form-note" role="status">
+                {submissionNotice || "Frontend preview only. Sign-in is not connected yet."}
+              </p>
+            </form>
+
+            <div className="auth-links">
+              <p>
+                New here?{" "}
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => changeView("teacherSignup")}
+                >
+                  Create an account
+                </button>
+              </p>
+            </div>
+
+            <button
+              type="button"
+              className="back-button"
+              onClick={() => changeView("roleSelection")}
+            >
+              ← Choose another role
+            </button>
+          </section>
+        )}
+
+        {view === "teacherSignup" && (
+          <section
+            className="auth-view form-view signup-view"
+            aria-labelledby="signup-heading"
+          >
+            <div className="view-heading">
+              <h2 id="signup-heading" ref={headingRef} tabIndex={-1}>
+                Create an Account
+              </h2>
+              <p>Sign up as a teacher</p>
+            </div>
+
+            <form
+              className="auth-form signup-form"
+              aria-describedby="signup-note"
+              noValidate
+              onInput={handleFormInput}
+              onSubmit={handleSubmit}
+            >
+              <div className="name-fields">
+                <label className="form-field">
+                  <span>First Name</span>
+                  <input
+                    type="text"
+                    name="firstName"
+                    placeholder="First name"
+                    autoComplete="given-name"
+                    required
+                  />
+                </label>
+
+                <label className="form-field">
+                  <span>Last Name</span>
+                  <input
+                    type="text"
+                    name="lastName"
+                    placeholder="Last name"
+                    autoComplete="family-name"
+                    required
+                  />
+                </label>
+              </div>
+
+              <label className="form-field">
+                <span>Email</span>
+                <input
+                  type="email"
+                  name="email"
+                  placeholder="Enter your email"
+                  autoComplete="email"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  required
+                />
+              </label>
+
+              <label className="form-field">
+                <span>Password</span>
+                <input
+                  type="password"
+                  name="password"
+                  placeholder="Create a password"
+                  autoComplete="new-password"
+                  required
+                />
+              </label>
+
+              <label className="form-field">
+                <span>Confirm Password</span>
+                <input
+                  type="password"
+                  name="confirmPassword"
+                  placeholder="Confirm your password"
+                  autoComplete="new-password"
+                  required
+                />
+              </label>
+
+              <button
+                type="submit"
+                className="primary-button"
+                aria-describedby="signup-note"
+              >
+                Create Account
+              </button>
+              <p id="signup-note" className="form-note" role="status">
+                {submissionNotice || "Frontend preview only. Account creation is not connected yet."}
+              </p>
+            </form>
+
+            <div className="auth-links">
+              <p>
+                Already have an account?{" "}
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => changeView("teacherLogin")}
+                >
+                  Log in
+                </button>
+              </p>
+            </div>
+
+            <button
+              type="button"
+              className="back-button"
+              onClick={() => changeView("roleSelection")}
+            >
+              ← Choose another role
+            </button>
+          </section>
+        )}
+
+        {view === "studentLogin" && (
+          <section
+            className="auth-view student-view"
+            aria-labelledby="student-heading"
+          >
+            <div className="view-heading">
+              <h2 id="student-heading" ref={headingRef} tabIndex={-1}>
+                Student
+              </h2>
+              <p>Student sign-in is coming soon.</p>
+            </div>
+
+            <button
+              type="button"
+              className="back-button"
+              onClick={() => changeView("roleSelection")}
+            >
+              ← Choose another role
+            </button>
+          </section>
+        )}
+      </div>
+    </main>
   );
 }
