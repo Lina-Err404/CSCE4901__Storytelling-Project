@@ -16,6 +16,10 @@ server/node_modules/
 # testing
 /coverage
 /.firebase-data/
+/firebase-export-*/
+**/firestore-debug.log
+**/firebase-debug.log
+**/ui-debug.log
 
 # next.js
 /.next/
