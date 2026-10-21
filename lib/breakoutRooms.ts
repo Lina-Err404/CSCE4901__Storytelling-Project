@@ -34,15 +34,33 @@ export function validateBreakoutRooms(
   );
 
   const assignedStudentIds = new Set<string>();
+  const seenRoomIds = new Set<string>();
 
   for (const room of rooms) {
-    // Every room needs a valid name and ID.
-    if (!room.roomId?.trim() || !room.roomName?.trim()) {
+    // Make sure each room has the correct runtime data shape.
+    if (
+      !room ||
+      typeof room.roomId !== "string" ||
+      typeof room.roomName !== "string" ||
+      !room.roomId.trim() ||
+      !room.roomName.trim() ||
+      !Array.isArray(room.studentIds)
+    ) {
       return {
         valid: false,
         error: "Each breakout room must have a valid ID and name.",
       };
     }
+
+    // Room IDs must be unique.
+    if (seenRoomIds.has(room.roomId)) {
+      return {
+        valid: false,
+        error: `Duplicate room ID ${room.roomId}.`,
+      };
+    }
+
+    seenRoomIds.add(room.roomId);
 
     // Breakout rooms require at least 2 students.
     if (room.studentIds.length < 2) {
@@ -53,6 +71,14 @@ export function validateBreakoutRooms(
     }
 
     for (const studentId of room.studentIds) {
+      // Student IDs must be strings.
+      if (typeof studentId !== "string" || !studentId.trim()) {
+        return {
+          valid: false,
+          error: "Each student ID must be valid.",
+        };
+      }
+
       // Student must already belong to the lobby.
       if (!validStudentIds.has(studentId)) {
         return {

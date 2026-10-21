@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getLobbyById } from "@/lib/mockLobbyData";
-import { replaceBreakoutRooms, BreakoutRoom } from "@/lib/breakoutRooms";
+import {
+  replaceBreakoutRooms,
+  BreakoutRoom,
+} from "@/lib/breakoutRooms";
 
 export async function GET(
   request: NextRequest,
@@ -9,7 +12,7 @@ export async function GET(
   try {
     const { lobbyId } = await context.params;
 
-    // Find the lobby.
+    // Find the requested lobby.
     const lobby = getLobbyById(lobbyId);
 
     if (!lobby) {
@@ -50,9 +53,25 @@ export async function POST(
 ) {
   try {
     const { lobbyId } = await context.params;
-    const body = await request.json();
 
-    const teacherId = body.teacherId;
+    // Safely parse the request body.
+    const body = await request.json().catch(() => null);
+
+    if (!body || typeof body !== "object") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid JSON body.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const teacherId =
+      typeof body.teacherId === "string"
+        ? body.teacherId.trim()
+        : "";
+
     const rooms: BreakoutRoom[] = body.rooms;
 
     // Make sure the request contains the required data.
@@ -66,7 +85,7 @@ export async function POST(
       );
     }
 
-    // Find the lobby.
+    // Find the requested lobby.
     const lobby = getLobbyById(lobbyId);
 
     if (!lobby) {
@@ -79,16 +98,40 @@ export async function POST(
       );
     }
 
-    // Validate and replace the current breakout room assignments.
-    const result = replaceBreakoutRooms(lobby, teacherId, rooms);
-
-    if (!result.success) {
-      return NextResponse.json(result, { status: 400 });
+    // Only the teacher assigned to this lobby can change its rooms.
+    if (lobby.teacherId !== teacherId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "You do not have permission to manage this lobby.",
+        },
+        { status: 403 }
+      );
     }
 
-    return NextResponse.json(result, { status: 200 });
+    // Validate and replace the current breakout room assignments.
+    const result = replaceBreakoutRooms(
+      lobby,
+      teacherId,
+      rooms
+    );
+
+    if (!result.success) {
+      return NextResponse.json(
+        result,
+        { status: 400 }
+      );
+    }
+
+    return NextResponse.json(
+      result,
+      { status: 200 }
+    );
   } catch (error) {
-    console.error("Breakout room assignment error:", error);
+    console.error(
+      "Breakout room assignment error:",
+      error
+    );
 
     return NextResponse.json(
       {
