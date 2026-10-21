@@ -51,7 +51,7 @@ export default function Home() {
     updateFormValidity(event.currentTarget);
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmissionNotice("");
     const form = event.currentTarget;
@@ -59,19 +59,23 @@ export default function Home() {
     updateFormValidity(form);
     if (!form.reportValidity()) return;
 
-    // Connection to backend
-    const signIn = new FormData(form);
-    userInput(signIn.get("username"), signIn.get("password");
-    if (view === "teacherSignup") {
-      signUp(); }    // Goes to backend to create user's account in FB
-    else if (view === "teacherLogin") {
-      logIn(); }    // Goes to backend to attempt login in FB
-    
-    setSubmissionNotice(
-      view === "teacherSignup"
-        ? "Account creation is not connected yet. No account was created."
-        : "Sign-in is not connected yet. You have not been logged in.",
-    );
+    const formData = new FormData(form);
+    const email = String(formData.get("email") ?? formData.get("username") ?? "").trim();
+    const password = String(formData.get("password") ?? "");
+    const firstName = String(formData.get("firstName") ?? "").trim();
+    const lastName = String(formData.get("lastName") ?? "").trim();
+
+    try {
+      if (view === "teacherSignup") {
+        await signUp(email, password, firstName, lastName);
+        setSubmissionNotice("Account created.");
+      } else if (view === "teacherLogin") {
+        await logIn(email, password);
+        setSubmissionNotice("Logged in.");
+      }
+    } catch (err) {
+      setSubmissionNotice(err instanceof Error ? err.message : "Authentication failed.");
+    }
   }
 
   useEffect(() => {
