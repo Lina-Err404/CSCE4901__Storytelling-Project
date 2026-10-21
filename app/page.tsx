@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
@@ -18,18 +17,22 @@ type Lobby = {
 async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   const currentUser = auth?.currentUser;
+  const isDevBypass =
+    process.env.NODE_ENV !== "production" &&
+    (process.env.NEXT_PUBLIC_ALLOW_DEV_MODE === "true" ||
+      process.env.NEXT_PUBLIC_USE_AUTH_EMULATOR === "true");
 
   if (!currentUser) {
-    if (process.env.NODE_ENV !== "production" && (
-      process.env.NEXT_PUBLIC_ALLOW_DEV_MODE === "true" ||
-      process.env.NEXT_PUBLIC_USE_AUTH_EMULATOR === "true"
-    )) {
+    if (isDevBypass) {
       headers.set("x-teacher-id", "local-dev-teacher");
     } else {
       throw new Error("Sign in is required.");
     }
   } else {
     headers.set("Authorization", `Bearer ${await currentUser.getIdToken()}`);
+    if (isDevBypass) {
+      headers.set("x-teacher-id", currentUser.uid);
+    }
   }
 
   if (options.body && !(options.body instanceof FormData)) {
@@ -45,14 +48,26 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export default function Home() {
-  const devMode = process.env.NODE_ENV !== "production" && (
-    process.env.NEXT_PUBLIC_ALLOW_DEV_MODE === "true" ||
-    process.env.NEXT_PUBLIC_USE_AUTH_EMULATOR === "true"
+  const devMode =
+    process.env.NODE_ENV !== "production" &&
+    (process.env.NEXT_PUBLIC_ALLOW_DEV_MODE === "true" ||
+      process.env.NEXT_PUBLIC_USE_AUTH_EMULATOR === "true");
+  const [user, setUser] = useState<User | null>(() =>
+    devMode ? ({ uid: "local-dev-teacher" } as User) : null,
   );
-  const [user, setUser] = useState<User | null>(() => devMode ? ({ uid: "local-dev-teacher" } as User) : null);
-  const [userRole, setUserRole] = useState<"teacher" | null>(() => devMode ? "teacher" : null);
-  const [authReady, setAuthReady] = useState(devMode);
-  const [authError, setAuthError] = useState("");
+  const [userRole, setUserRole] = useState<"teacher" | null>(() =>
+    devMode ? "teacher" : null,
+  );
+  const [authReady, setAuthReady] = useState(
+    devMode || !auth || authConfigurationMissing,
+  );
+  const [authError, setAuthError] = useState(() => {
+    if (devMode) return "Local dev mode enabled. Opening the host lobby.";
+    if (!auth || authConfigurationMissing) {
+      return "Firebase auth is not configured for this app.";
+    }
+    return "";
+  });
   const [activeTab, setActiveTab] = useState("Class Lobby");
   const [copied, setCopied] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -72,35 +87,29 @@ export default function Home() {
   const started = lobby?.status === "locked";
 
   useEffect(() => {
+    if (devMode || !auth || authConfigurationMissing) {
+      return;
+    }
     let current = true;
-    if (devMode) {
-      setUser({ uid: "local-dev-teacher" } as User);
-      setUserRole("teacher");
-      setAuthReady(true);
-      setAuthError("Local dev mode enabled. Opening the host lobby.");
-      return () => {
-        current = false;
-      };
-    }
-    if (!auth || authConfigurationMissing) {
-      setUser(null);
-      setUserRole(null);
-      setAuthReady(true);
-      setAuthError("Firebase auth is not configured for this app.");
-      return () => {
-        current = false;
-      };
-    }
     const unsubscribe = onAuthStateChanged(auth, async (nextUser) => {
       setUser(nextUser);
-      setUserRole(null);
+      if (!nextUser) {
+        setUserRole(null);
+        setStudents([]);
+        setJoinedIds([]);
+        setLobby(null);
+      }
       setAuthError("");
       if (nextUser) {
         try {
           const token = await nextUser.getIdTokenResult();
-          if (current && token.claims.role === "teacher") setUserRole("teacher");
+          if (current && token.claims.role === "teacher") {
+            setUserRole("teacher");
+          }
         } catch {
-          if (current) setAuthError("Could not verify your account role. Sign in again.");
+          if (current) {
+            setAuthError("Could not verify your account role. Sign in again.");
+          }
         }
       }
       if (current) setAuthReady(true);
@@ -110,7 +119,7 @@ export default function Home() {
       current = false;
       unsubscribe();
     };
-  }, []);
+  }, [devMode]);
 
   useEffect(() => {
     if (!user || !isTeacher) return;
@@ -122,12 +131,25 @@ export default function Home() {
         const result = await api<{ classes: SchoolClass[] }>("/classes");
         if (cancelled) return;
         setClasses(result.classes);
-        setClassId((previous) => result.classes.some((item) => item.classId === previous)
-          ? previous
-          : result.classes[0]?.classId || "");
+        const nextClassId = result.classes[0]?.classId || "";
+        setClassId((previous) => {
+          const resolved = result.classes.some((item) => item.classId === previous)
+            ? previous
+            : nextClassId;
+          if (!resolved) {
+            setStudents([]);
+            setJoinedIds([]);
+            setLobby(null);
+          }
+          return resolved;
+        });
       } catch (reason) {
         if (!cancelled) {
-          setError(reason instanceof Error ? reason.message : "Could not load your classes.");
+          setError(
+            reason instanceof Error
+              ? reason.message
+              : "Could not load your classes.",
+          );
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -141,16 +163,7 @@ export default function Home() {
   }, [user, isTeacher]);
 
   useEffect(() => {
-    if (!user || !isTeacher) {
-      setStudents([]);
-      setJoinedIds([]);
-      setLobby(null);
-      return;
-    }
-    if (!classId) {
-      setStudents([]);
-      setJoinedIds([]);
-      setLobby(null);
+    if (!user || !isTeacher || !classId) {
       return;
     }
     let cancelled = false;
@@ -161,7 +174,9 @@ export default function Home() {
       try {
         const [roster, lobbies] = await Promise.all([
           api<{ students: Student[] }>(`/classes/${classId}/roster`),
-          api<{ lobbies: Lobby[] }>(`/lobbies?classId=${encodeURIComponent(classId)}`),
+          api<{ lobbies: Lobby[] }>(
+            `/lobbies?classId=${encodeURIComponent(classId)}`,
+          ),
         ]);
         if (cancelled) return;
         setStudents(roster.students);
@@ -172,14 +187,18 @@ export default function Home() {
             `/lobbies/${currentLobby.lobbyId}/students`,
           );
           if (!cancelled) {
-            setJoinedIds(participation.students.map((student) => student.studentId));
+            setJoinedIds(
+              participation.students.map((student) => student.studentId),
+            );
           }
         } else {
           setJoinedIds([]);
         }
       } catch (reason) {
         if (!cancelled) {
-          setError(reason instanceof Error ? reason.message : "Could not load the class.");
+          setError(
+            reason instanceof Error ? reason.message : "Could not load the class.",
+          );
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -202,7 +221,11 @@ export default function Home() {
         );
         setJoinedIds(result.students.map((student) => student.studentId));
       } catch (reason) {
-        setError(reason instanceof Error ? reason.message : "Could not refresh participation.");
+        setError(
+          reason instanceof Error
+            ? reason.message
+            : "Could not refresh participation.",
+        );
       }
     };
 
@@ -215,14 +238,19 @@ export default function Home() {
     setBusy(true);
     setError("");
     try {
-      const created = await api<{ lobbyId: string; joinCode: string }>("/lobbies", {
-        method: "POST",
-        body: JSON.stringify({ classId }),
-      });
+      const created = await api<{ lobbyId: string; joinCode: string }>(
+        "/lobbies",
+        {
+          method: "POST",
+          body: JSON.stringify({ classId }),
+        },
+      );
       setLobby({ ...created, status: "open" });
       setJoinedIds([]);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not create a lobby.");
+      setError(
+        reason instanceof Error ? reason.message : "Could not create a lobby.",
+      );
     } finally {
       setBusy(false);
     }
@@ -239,7 +267,9 @@ export default function Home() {
       });
       setLobby({ ...lobby, status: "locked" });
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not start the session.");
+      setError(
+        reason instanceof Error ? reason.message : "Could not start the session.",
+      );
     } finally {
       setBusy(false);
     }
@@ -255,17 +285,23 @@ export default function Home() {
     setBusy(true);
     setError("");
     try {
-      const result = await api<{ imported: number; rejected: { row: number; reason: string }[] }>(
+      const result = await api<{
+        imported: number;
+        rejected: { row: number; reason: string }[];
+      }>(`/classes/${classId}/roster`, { method: "POST", body });
+      const roster = await api<{ students: Student[] }>(
         `/classes/${classId}/roster`,
-        { method: "POST", body },
       );
-      const roster = await api<{ students: Student[] }>(`/classes/${classId}/roster`);
       setStudents(roster.students);
       if (result.rejected.length) {
-        setError(`Imported ${result.imported}; ${result.rejected.length} row(s) were rejected.`);
+        setError(
+          `Imported ${result.imported}; ${result.rejected.length} row(s) were rejected.`,
+        );
       }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not import the roster.");
+      setError(
+        reason instanceof Error ? reason.message : "Could not import the roster.",
+      );
     } finally {
       setBusy(false);
     }
@@ -286,7 +322,9 @@ export default function Home() {
       setClassId(created.classId);
       setNewClassName("");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not create the class.");
+      setError(
+        reason instanceof Error ? reason.message : "Could not create the class.",
+      );
     } finally {
       setBusy(false);
     }
@@ -304,7 +342,9 @@ export default function Home() {
       setLobby(null);
       setJoinedIds([]);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not close the lobby.");
+      setError(
+        reason instanceof Error ? reason.message : "Could not close the lobby.",
+      );
     } finally {
       setBusy(false);
     }
@@ -315,12 +355,19 @@ export default function Home() {
     setBusy(true);
     setError("");
     try {
-      await api(`/lobbies/${lobby.lobbyId}/students/${encodeURIComponent(studentId)}`, {
-        method: "DELETE",
-      });
+      await api(
+        `/lobbies/${lobby.lobbyId}/students/${encodeURIComponent(studentId)}`,
+        {
+          method: "DELETE",
+        },
+      );
       setJoinedIds((current) => current.filter((id) => id !== studentId));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not remove the student.");
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Could not remove the student.",
+      );
     } finally {
       setBusy(false);
     }
@@ -337,6 +384,17 @@ export default function Home() {
     }
   }
 
+  function handleSignOut() {
+    if (auth?.currentUser) {
+      void signOut(auth);
+    }
+    setUser(null);
+    setUserRole(null);
+    setStudents([]);
+    setJoinedIds([]);
+    setLobby(null);
+  }
+
   const navItems = [
     { label: "Class Lobby", icon: "⌂" },
     { label: "Students", icon: "♙" },
@@ -346,14 +404,32 @@ export default function Home() {
   ];
 
   if (!authReady) {
-    return <main className="p-8 text-sm text-slate-600">Checking sign-in...</main>;
+    return (
+      <main className="p-8 text-sm text-slate-600">Checking sign-in...</main>
+    );
   }
-  if (!user) return <AuthScreen />;
+  if (!user) {
+    return (
+      <AuthScreen
+        onAuthenticated={(authedUser, role) => {
+          setUser(authedUser);
+          setUserRole(role === "teacher" ? "teacher" : null);
+        }}
+      />
+    );
+  }
   if (!isTeacher) {
     return (
       <>
         <StudentLobby user={user as User} />
-        {authError && <p role="alert" className="fixed bottom-4 left-4 rounded bg-rose-50 p-3 text-sm text-rose-800">{authError}</p>}
+        {authError && (
+          <p
+            role="alert"
+            className="fixed bottom-4 left-4 rounded bg-rose-50 p-3 text-sm text-rose-800"
+          >
+            {authError}
+          </p>
+        )}
       </>
     );
   }
@@ -431,7 +507,10 @@ export default function Home() {
               <span className="rounded-full bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
                 ● Teacher
               </span>
-              <button onClick={() => auth && void signOut(auth)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold">
+              <button
+                onClick={handleSignOut}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold"
+              >
                 Sign out
               </button>
             </div>
@@ -439,7 +518,10 @@ export default function Home() {
 
           <div className="mx-auto max-w-6xl space-y-6 p-5 md:p-8">
             {error && (
-              <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+              <div
+                role="alert"
+                className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
+              >
                 {error}
               </div>
             )}
@@ -452,198 +534,175 @@ export default function Home() {
               <div className="rounded-2xl border border-slate-200 bg-white p-8">
                 <h2 className="text-xl font-bold">{activeTab}</h2>
                 <p className="mt-2 text-slate-600">
-                  This area belongs to the {activeTab.toLowerCase()} workflow.
-                  It is not implemented by this R13 lobby prototype yet.
+                  Switch back to Class Lobby to share the session code and
+                  manage students.
                 </p>
                 <button
                   onClick={() => setActiveTab("Class Lobby")}
-                  className="mt-5 rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white hover:bg-indigo-700"
+                  className="mt-5 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
                 >
                   Return to Class Lobby
                 </button>
               </div>
             ) : (
               <>
-                <div className="flex flex-col justify-between gap-4 border-b border-slate-200 pb-4 sm:flex-row sm:items-center">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600">
-                      Your class
-                    </p>
-                    <h2 className="mt-2 text-2xl font-bold tracking-tight">
-                      {classes.find((item) => item.classId === classId)?.name || "Choose a class"}
-                    </h2>
+                <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-600 p-6 text-white shadow-lg md:p-8">
+                  <div className="relative z-10 flex flex-col justify-between gap-6 lg:flex-row lg:items-center">
+                    <div className="max-w-xl">
+                      <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold uppercase tracking-wider">
+                        ✨ Teacher Host View
+                      </span>
+                      <h2 className="mt-4 text-3xl font-bold tracking-tight md:text-4xl">
+                        Host a Collaborative Story Session
+                      </h2>
+                      <p className="mt-2 text-indigo-100">
+                        Share the class code and start when your students are in
+                        the lobby.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 sm:w-auto">
+                      <div className="rounded-2xl bg-white/15 p-4 backdrop-blur">
+                        <p className="text-xs uppercase tracking-wider text-indigo-100">
+                          Joined
+                        </p>
+                        <p className="mt-1 text-2xl font-bold">
+                          {joinedCount} / {students.length}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl bg-white/15 p-4 backdrop-blur">
+                        <p className="text-xs uppercase tracking-wider text-indigo-100">
+                          Session
+                        </p>
+                        <p className="mt-1 text-2xl font-bold">
+                          {started ? "Live" : lobby ? "Lobby" : "Idle"}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                  <span className="w-fit rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-semibold text-emerald-800">
-                    {started ? "Session started" : lobby ? "Lobby open" : "No active lobby"}
-                  </span>
                 </div>
 
-                {classes.length > 0 ? (
-                  <label className="block max-w-sm text-sm font-semibold">
-                    Class
+                <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                  <label className="flex items-center gap-3 text-sm font-semibold text-slate-700">
+                    Classroom
                     <select
                       value={classId}
                       onChange={(event) => setClassId(event.target.value)}
-                      className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5"
+                      className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900"
                     >
-                      {classes.map((item) => <option key={item.classId} value={item.classId}>{item.name}</option>)}
+                      {!classes.length && (
+                        <option value="">No classes yet</option>
+                      )}
+                      {classes.map((item) => (
+                        <option key={item.classId} value={item.classId}>
+                          {item.name}
+                        </option>
+                      ))}
                     </select>
                   </label>
-                ) : !loading ? (
-                  <form onSubmit={createClass} className="flex max-w-lg flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4">
-                    <label className="min-w-56 flex-1 text-sm font-semibold">
-                      Create your first class
-                      <input
-                        required
-                        maxLength={80}
-                        value={newClassName}
-                        onChange={(event) => setNewClassName(event.target.value)}
-                        className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5"
-                      />
-                    </label>
-                    <button disabled={busy} className="rounded-lg bg-indigo-700 px-4 py-2.5 font-semibold text-white disabled:opacity-50">Create class</button>
-                  </form>
-                ) : null}
-
-                <div className="grid gap-4 sm:grid-cols-3">
-                  {[
-                    {
-                      label: "Students in class",
-                      value: String(students.length),
-                      note: "Rostered students",
-                    },
-                    {
-                      label: "Students joined",
-                      value: String(joinedCount),
-                      note: "Live lobby",
-                    },
-                    {
-                      label: "Waiting to join",
-                      value: String(Math.max(0, students.length - joinedCount)),
-                      note: "Not yet joined",
-                    },
-                  ].map((item) => (
-                    <div
-                      key={item.label}
-                      className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+                  <form onSubmit={createClass} className="flex gap-2">
+                    <input
+                      value={newClassName}
+                      onChange={(event) => setNewClassName(event.target.value)}
+                      placeholder="New class name"
+                      aria-label="New class name"
+                      className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                    />
+                    <button
+                      type="submit"
+                      disabled={busy || !newClassName.trim()}
+                      className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                     >
-                      <p className="text-sm text-slate-500">{item.label}</p>
-                      <p className="mt-2 text-3xl font-bold">{item.value}</p>
-                      <p className="mt-2 text-xs text-slate-400">
-                        {item.note}
-                      </p>
-                    </div>
-                  ))}
+                      Create class
+                    </button>
+                  </form>
                 </div>
 
-                <div className="grid items-start gap-6 lg:grid-cols-5">
-                  <div className="space-y-6 lg:col-span-2">
+                <div className="grid gap-6 lg:grid-cols-12">
+                  <div className="space-y-6 lg:col-span-5">
                     <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50 text-xl">
-                          🔐
-                        </div>
+                      <div className="flex items-center justify-between">
                         <div>
-                          <h3 className="font-bold">Class-only access</h3>
-                          <p className="text-sm text-slate-500">
-                            Restricted student participation
+                          <p className="text-xs font-bold uppercase tracking-wider text-indigo-600">
+                            Session Access
                           </p>
+                          <h3 className="mt-1 text-lg font-bold">Lobby Code</h3>
                         </div>
+                        <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+                          {started
+                            ? "Locked"
+                            : lobby
+                              ? "Active"
+                              : "Not created"}
+                        </span>
                       </div>
 
-                      <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                        <p className="font-semibold text-slate-900">
-                          Code-based access
+                      <div className="mt-5 rounded-2xl border-2 border-dashed border-indigo-200 bg-indigo-50/60 p-5 text-center">
+                        <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+                          Students enter this code
                         </p>
-                        <p className="mt-1 text-sm leading-5 text-slate-600">
-                          Only students on your roster with a valid lobby code can join this session.
-                        </p>
-                      </div>
-
-                      <div className="mt-5 border-t border-slate-100 pt-4">
-                        <input
-                          id="roster-file"
-                          type="file"
-                          accept=".csv,text/csv"
-                          onChange={importRoster}
-                          disabled={busy || !classId}
-                          className="sr-only"
-                        />
-                        <label
-                          htmlFor="roster-file"
-                          className={`inline-flex cursor-pointer items-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 ${busy ? "pointer-events-none opacity-50" : ""}`}
-                        >
-                          {busy ? "Working..." : "Import student roster CSV"}
-                        </label>
-                        <p className="mt-2 text-xs text-slate-500">
-                          CSV columns: studentId,name
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                      <h3 className="font-bold">Lobby invitation</h3>
-                      <p className="mt-2 text-sm text-slate-500">
-                        Share the code with students in your class.
-                      </p>
-
-                      <div className="mt-5 rounded-2xl bg-indigo-50 px-4 py-6 text-center">
-                        <p className="text-xs font-semibold uppercase tracking-widest text-indigo-500">
-                          Lobby code
-                        </p>
-                        <p className="mt-2 text-3xl font-extrabold tracking-[0.2em] text-indigo-700">
+                        <p className="mt-2 font-mono text-3xl font-extrabold tracking-widest text-indigo-700">
                           {lobbyCode}
                         </p>
                       </div>
 
-                      <button
-                        onClick={copyCode}
-                        disabled={!lobby || copied}
-                        className="mt-4 w-full rounded-xl border border-indigo-200 px-4 py-3 font-semibold text-indigo-700 transition hover:bg-indigo-50"
-                      >
-                        {copied ? "Code copied" : "Copy lobby code"}
-                      </button>
+                      <div className="mt-4 grid grid-cols-2 gap-3">
+                        <button
+                          onClick={copyCode}
+                          disabled={!lobby}
+                          className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                        >
+                          {copied ? "Copied!" : "Copy Code"}
+                        </button>
+                        <button
+                          onClick={lobby ? closeLobby : createLobby}
+                          disabled={busy || !classId}
+                          className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {lobby ? "Close Lobby" : "Create Lobby"}
+                        </button>
+                      </div>
 
-                      <p className="mt-3 text-center text-xs text-slate-400">
-                        {lobby ? "Share this code with students on your roster." : "Create a lobby to generate an invitation code."}
-                      </p>
-                      {!lobby && (
-                        <button
-                          onClick={createLobby}
-                          disabled={busy || loading || !classId}
-                          className="mt-4 w-full rounded-lg bg-indigo-600 px-4 py-3 font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
-                        >
-                          Create class lobby
-                        </button>
-                      )}
-                      {lobby && !started && (
-                        <button
-                          onClick={closeLobby}
+                      <div className="mt-5 rounded-xl bg-slate-50 p-4">
+                        <p className="text-sm font-semibold text-slate-800">
+                          Code-based access
+                        </p>
+                        <p className="mt-1 text-sm leading-5 text-slate-600">
+                          Only students on your roster with a valid lobby code
+                          can join this session.
+                        </p>
+                      </div>
+
+                      <label className="mt-4 flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                        Import Roster CSV
+                        <input
+                          type="file"
+                          accept=".csv,text/csv"
+                          onChange={importRoster}
                           disabled={busy}
-                          className="mt-3 w-full rounded-lg border border-rose-200 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
-                        >
-                          Close lobby
-                        </button>
-                      )}
+                          className="sr-only"
+                        />
+                      </label>
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-3">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-7">
+                    <div className="flex flex-col justify-between gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center">
                       <div>
-                        <h3 className="text-lg font-bold">
-                          Student participation
-                        </h3>
-                        <p className="mt-1 text-sm text-slate-500">
-                          See who is in the lobby.
+                        <p className="text-xs font-bold uppercase tracking-wider text-indigo-600">
+                          Classroom Roster
                         </p>
+                        <h3 className="mt-1 text-lg font-bold">
+                          Students in This Lobby
+                        </h3>
                       </div>
-                      <span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-medium">
-                        {joinedCount} joined
+                      <span className="rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700">
+                        {joinedCount} joined •{" "}
+                        {Math.max(students.length - joinedCount, 0)} waiting
                       </span>
                     </div>
 
-                    <div className="mt-5 flex flex-wrap gap-2 border-b border-slate-100 pb-4 text-sm">
+                    <div className="mt-4 flex gap-2 border-b border-slate-100 pb-4 text-xs sm:text-sm">
                       <span className="rounded-lg bg-indigo-50 px-3 py-2 font-semibold text-indigo-700">
                         All students ({students.length})
                       </span>
@@ -685,11 +744,15 @@ export default function Home() {
                                   : "bg-slate-100 text-slate-500"
                               }`}
                             >
-                              {joinedIds.includes(student.studentId) ? "Joined" : "Not joined"}
+                              {joinedIds.includes(student.studentId)
+                                ? "Joined"
+                                : "Not joined"}
                             </span>
                             {lobby && joinedIds.includes(student.studentId) && (
                               <button
-                                onClick={() => void kickStudent(student.studentId)}
+                                onClick={() =>
+                                  void kickStudent(student.studentId)
+                                }
                                 disabled={busy}
                                 className="shrink-0 rounded-md border border-rose-200 px-2 py-1 text-xs font-semibold text-rose-700 disabled:opacity-50"
                                 aria-label={`Remove ${student.displayName} from lobby`}
@@ -711,7 +774,8 @@ export default function Home() {
                     )}
                     {!students.length && !loading && (
                       <p className="py-8 text-center text-sm text-slate-500">
-                        No students on the roster yet. Import a CSV to add the class list.
+                        No students on the roster yet. Import a CSV to add the
+                        class list.
                       </p>
                     )}
                   </div>
@@ -729,10 +793,13 @@ export default function Home() {
                     disabled={started || busy || !lobby}
                     className="rounded-xl bg-indigo-600 px-6 py-3 font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-400"
                   >
-                    {started ? "Session started" : lobby ? "Start story session" : "Create a lobby first"}
+                    {started
+                      ? "Session started"
+                      : lobby
+                        ? "Start story session"
+                        : "Create a lobby first"}
                   </button>
                 </div>
-
               </>
             )}
           </div>

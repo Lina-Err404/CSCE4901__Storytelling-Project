@@ -1,27 +1,29 @@
 "use client";
 
-import { getApp, getApps, initializeApp } from "firebase/app";
+import { getApp, getApps, initializeApp, type FirebaseApp } from "firebase/app";
 import { connectAuthEmulator, getAuth, type Auth } from "firebase/auth";
+import firebaseConfig from "./Login_Signup_Backend/firebase-config.js";
 
 const useAuthEmulator = process.env.NEXT_PUBLIC_USE_AUTH_EMULATOR === "true";
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || (useAuthEmulator ? "demo-api-key" : ""),
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || (useAuthEmulator ? "demo-storytelling.firebaseapp.com" : ""),
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || (useAuthEmulator ? "demo-storytelling" : ""),
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || (useAuthEmulator ? "1:1234567890:web:demo-storytelling" : ""),
-};
+const requiredConfig = [
+  firebaseConfig.apiKey,
+  firebaseConfig.authDomain,
+  firebaseConfig.projectId,
+  firebaseConfig.appId,
+];
 
-const isConfigured = Object.values(firebaseConfig).every(Boolean);
+const isConfigured = requiredConfig.every(Boolean);
+let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 
 if (isConfigured) {
-  const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+  app = getApps().length ? getApp() : initializeApp(firebaseConfig);
   auth = getAuth(app);
   if (useAuthEmulator && typeof window !== "undefined") {
     connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
   }
 }
 
-export { auth };
+export { app, auth };
 
 export const authConfigurationMissing = !isConfigured;
