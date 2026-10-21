@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { db } from "../../../lib/firebaseAdmin";
 
 //this gets the teachers custom starting prompt
 export async function POST(request: NextRequest) {
@@ -27,13 +28,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Please enter a starting prompt." }, { status: 400 });
     }
 
-    //saving the prompt to the lobby when connected
-    // it just returns an error because the prompt isnt saved as of now
-    return NextResponse.json(
-      { error: "Starting prompt saved when it gets connected." },
-      {status: 501 } //not implemented yet
-    );
-  } catch {
+        const startingPrompt =
+      promptType === "custom" ? (promptText as string).trim() : "";
+
+    try {
+      await db.collection("Lobbies").doc("B9WD4X").set(
+        {
+          startingPrompt,
+          promptType,
+          assignmentType,
+        },
+        { merge: true }
+      );
+
+      return NextResponse.json({ message: "Starting prompt saved." });
+    } catch (error) {
+      console.error("Could not save starting prompt:", error);
+      return NextResponse.json(
+        { error: "Could not save starting prompt." },
+        { status: 500 }
+      );
+    }
+  }  catch {
     return NextResponse.json(
       { error: "Invalid request." },
       { status: 400 }
