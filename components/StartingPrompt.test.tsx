@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import StartingPrompt from './StartingPrompt';
 
-// Mock the global fetch so our test doesn't try to hit Fikayo's backend, cast as jest.Mock to fix TS compilation
+// mock the global fetch so our test doesn't try to hit Fikayo's backend, cast as jest.Mock to fix TS compilation
 global.fetch = jest.fn(() =>
   Promise.resolve({
     json: () => Promise.resolve({ error: "Starting prompt saved when it gets connected." }),
@@ -15,7 +15,7 @@ global.fetch = jest.fn(() =>
 describe('StartingPrompt Component', () => {
   it('renders the component with default custom prompt view', () => {
     render(<StartingPrompt />);
-    // Check that our new presentation slide text is loading properly
+    // check that our new presentation slide text is loading properly
     expect(screen.getByText('Assign Starting Prompt')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Enter a story starter or prompt for your students...')).toBeInTheDocument();
   });
@@ -24,10 +24,10 @@ describe('StartingPrompt Component', () => {
     render(<StartingPrompt />);
     const modeSelect = screen.getByLabelText('Prompt Mode');
     
-    // Simulate the teacher picking "random" from the dropdown
+    // simulate the teacher picking "random" from the dropdown
     fireEvent.change(modeSelect, { target: { value: 'random' } });
     
-    // The custom text area should disappear
+    // the custom text area should disappear
     expect(screen.queryByPlaceholderText('Enter a story starter or prompt for your students...')).not.toBeInTheDocument();
   });
 
@@ -43,14 +43,19 @@ describe('StartingPrompt Component', () => {
 
   it('calls the submit function and displays a success message when clicked', async () => {
     render(<StartingPrompt />);
-    const submitButton = screen.getByText('Assign to Classroom');
     
+    // first type something into the custom prompt box so it passes validation
+    const textarea = screen.getByPlaceholderText('Enter a story starter or prompt for your students...');
+    fireEvent.change(textarea, { target: { value: 'Once upon a time in a dark forest...' } });
+
+    // then click the submit button
+    const submitButton = screen.getByText('Assign to Classroom');
     fireEvent.click(submitButton);
     
-    // Expect our fake fetch to have been called
+    // expect our fake fetch to have been called
     expect(global.fetch).toHaveBeenCalledTimes(1);
     
-    // Check that the UI updated to show our updated success message
+    // check that the UI updated to show our updated success message
     expect(await screen.findByText('Prompt successfully assigned!')).toBeInTheDocument();
   });
 });
