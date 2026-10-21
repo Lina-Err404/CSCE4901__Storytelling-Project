@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { CoverBook, CoverFrame } from "@/components/auth/CoverArtwork";
+import { logIn, signUp, userInput } from "../Login_Signup_Backend/authServiceFB.js";
 
 type AuthView =
   | "roleSelection"
@@ -58,8 +59,14 @@ export default function Home() {
     updateFormValidity(form);
     if (!form.reportValidity()) return;
 
-    // Backend integration belongs here after validation. No credentials are sent
-    // or stored, and passing frontend validation does not authenticate anyone.
+    // Connection to backend
+    const signIn = new FormData(form);
+    userInput(signIn.get("username"), signIn.get("password");
+    if (view === "teacherSignup") {
+      signUp(); }    // Goes to backend to create user's account in FB
+    else if (view === "teacherLogin") {
+      logIn(); }    // Goes to backend to attempt login in FB
+    
     setSubmissionNotice(
       view === "teacherSignup"
         ? "Account creation is not connected yet. No account was created."
