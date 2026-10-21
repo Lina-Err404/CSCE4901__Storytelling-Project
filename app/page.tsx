@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { CoverBook, CoverFrame } from "@/components/auth/CoverArtwork";
-import { logIn, signUp, userInput } from "../Login_Signup_Backend/authServiceFB.js";
+import { logIn, signUp } from "@/app/Login_Signup_Backend/authServiceFB";
 
 type AuthView =
   | "roleSelection"
