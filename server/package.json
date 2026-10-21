@@ -13,18 +13,18 @@
     "test": "firebase --config ../firebase.json emulators:exec --only firestore --project demo-storytelling \"jest --runInBand\""
   },
   "dependencies": {
+  "dependencies": {
     "csv-parse": "^6.1.0",
+    "dotenv": "^18.0.8",
     "express": "^5.1.0",
     "express-rate-limit": "^8.1.0",
     "firebase-admin": "^13.4.0",
     "jsonwebtoken": "^9.0.2",
-    "multer": "^2.0.2"
+    "multer": "^2.0.2",
+    "socket.io": "^4.8.1"
   },
   "devDependencies": {
     "firebase-tools": "^14.22.0",
     "jest": "^30.2.0",
-    "socket.io": "^4.8.1",
-    "socket.io-client": "^4.8.1",
-    "supertest": "^7.1.4"
   }
 }
