@@ -53,7 +53,7 @@ app.use((error, req, res, next) => {
 io = new Server(server, {
   cors: { origin: process.env.WEB_ORIGIN || 'http://localhost:3000' },
 });
-io.use(createFirebaseSocketAuth(admin));
+io.use(createSocketAuth({ db, jwtSecret: process.env.JWT_SECRET }));
 
 server.listen(port, '0.0.0.0', () => {
   console.log(`Storytelling API and Socket.IO listening on http://localhost:${port}`);
