@@ -19,11 +19,10 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   const currentUser = auth?.currentUser;
 
-  if (currentUser) {
-    headers.set("Authorization", `Bearer ${await currentUser.getIdToken()}`);
-  } else {
-    headers.set("x-teacher-id", "local-dev-teacher");
+  if (!currentUser) {
+    throw new Error("Sign in is required.");
   }
+  headers.set("Authorization", `Bearer ${await currentUser.getIdToken()}`);
 
   if (options.body && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
