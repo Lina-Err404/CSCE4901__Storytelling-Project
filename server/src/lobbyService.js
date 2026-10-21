@@ -31,7 +31,7 @@ function createLobbyService({ admin, db, generateCode = createCode }) {
     return snapshot.exists ? snapshot.data() : null;
   }
 
-  async function createLobby(teacherId, classId, maxPlayers = 4) {
+  async function createLobby(teacherId, classId, maxPlayers = 500) {
     if (typeof teacherId !== 'string' || !teacherId || typeof classId !== 'string' || !classId) {
       throw createServiceError('teacherId and classId are required', 400);
     }
