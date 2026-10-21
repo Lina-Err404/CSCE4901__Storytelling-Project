@@ -206,6 +206,16 @@ function createLobbyRouter({ db, admin, requireTeacher, requireStudent, jwtSecre
         const lobbySnapshot = await transaction.get(lobbyRef);
         if (!lobbySnapshot.exists || lobbySnapshot.data().status !== 'open') return null;
 
+        const classRef = db.collection('classes').doc(lobbySnapshot.data().classId);
+        const rosterRef = classRef.collection('roster').doc(studentId);
+        const [classSnapshot, rosterSnapshot] = await Promise.all([
+          transaction.get(classRef),
+          transaction.get(rosterRef),
+        ]);
+        if (!rosterSnapshot.exists && !classSnapshot.data()?.studentIds?.includes(studentId)) {
+          return null;
+        }
+
         const seatRef = lobbyRef.collection('students').doc(studentId);
         const seatSnapshot = await transaction.get(seatRef);
         if (seatSnapshot.data()?.kicked === true) return null;
