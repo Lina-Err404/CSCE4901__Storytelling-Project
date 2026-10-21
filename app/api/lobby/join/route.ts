@@ -1,11 +1,29 @@
 
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/firebaseAdmin";
+import { FieldValue } from "firebase-admin/firestore";
+import { adminAuth, db } from "@/lib/firebaseAdmin";
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const lobbyCode = body.lobbyCode;
+    // Make sure the student is authenticated
+    const authHeader = request.headers.get("authorization");
+
+    if (!authHeader?.startsWith("Bearer ")) {
+      return NextResponse.json(
+        { error: "Authentication required." },
+        { status: 401 }
+      );
+    }
+
+    const { uid } = await adminAuth.verifyIdToken(authHeader.slice(7));
+
+    // Safely read the request body
+    const body = await request.json().catch(() => null);
+
+    const lobbyCode =
+      body && typeof body === "object"
+        ? (body as Record<string, unknown>).lobbyCode
+        : undefined;
 
     // Make sure the student entered a valid 6-character code
     if (
@@ -22,36 +40,62 @@ export async function POST(request: NextRequest) {
     const code = lobbyCode.trim().toUpperCase();
 
     const lobbyRef = db.collection("Lobbies").doc(code);
-    const lobbyDoc = await lobbyRef.get();
 
-    // Lobby code does not exist
-    if (!lobbyDoc.exists) {
-      return NextResponse.json(
-        { error: "Lobby not found." },
-        { status: 404 }
-      );
-    }
+    // Check and update the lobby safely in one transaction
+    const errorResponse = await db.runTransaction(async (tx) => {
+      const lobbyDoc = await tx.get(lobbyRef);
 
-    const lobby = lobbyDoc.data();
+      // Lobby code does not exist
+      if (!lobbyDoc.exists) {
+        return NextResponse.json(
+          { error: "Lobby not found." },
+          { status: 404 }
+        );
+      }
 
-    // Lobby has already started
-    if (lobby?.status !== "open") {
-      return NextResponse.json(
-        { error: "Lobby has already started." },
-        { status: 409 }
-      );
-    }
+      const lobby = lobbyDoc.data();
 
-    // Lobby has reached its player limit
-    if (
-      typeof lobby.playerCount === "number" &&
-      typeof lobby.maxPlayers === "number" &&
-      lobby.playerCount >= lobby.maxPlayers
-    ) {
-      return NextResponse.json(
-        { error: "Lobby is full." },
-        { status: 409 }
-      );
+      // Lobby has already started
+      if (lobby?.status !== "open") {
+        return NextResponse.json(
+          { error: "Lobby has already started." },
+          { status: 409 }
+        );
+      }
+
+      const participantIds = Array.isArray(lobby.participantIds)
+        ? lobby.participantIds
+        : [];
+
+      // Do not count the same student twice
+      if (participantIds.includes(uid)) {
+        return null;
+      }
+
+      // Lobby has reached its player limit
+      if (
+        typeof lobby.playerCount !== "number" ||
+        typeof lobby.maxPlayers !== "number" ||
+        lobby.maxPlayers < 1 ||
+        lobby.playerCount >= lobby.maxPlayers
+      ) {
+        return NextResponse.json(
+          { error: "Lobby is full." },
+          { status: 409 }
+        );
+      }
+
+      // Add the student and increase the player count
+      tx.update(lobbyRef, {
+        participantIds: FieldValue.arrayUnion(uid),
+        playerCount: FieldValue.increment(1),
+      });
+
+      return null;
+    });
+
+    if (errorResponse) {
+      return errorResponse;
     }
 
     return NextResponse.json(
