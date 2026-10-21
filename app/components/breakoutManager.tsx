@@ -14,7 +14,7 @@ export default function BreakoutManager({ lobby }: {lobby: Lobby}) {
 
 
     //once db is configured change to '/api/lobbies/${lobbyId}/breakout-rooms or something similar
-    const url = '/api/lobbies/lobby1/breakout-rooms';
+    const url = `/api/lobbies/${encodeURIComponent(lobby.lobbyId)}/breakout-rooms`;
     
     
     // Uses GET to load rooms.
@@ -30,15 +30,15 @@ export default function BreakoutManager({ lobby }: {lobby: Lobby}) {
             return data;
         })
         .then((data) => {
-            const list = Array.isArray(data.rooms) ? data.rooms : [];
+            const list : BreakoutRoom[] = Array.isArray(data.rooms)
+                ? data.rooms.map((r: BreakoutRoom) => ({
+                    roomId: String(r.roomId ?? ""),
+                    roomName: String(r.roomName ?? "Room"),
+                    studentIds: Array.isArray(r.studentIds) ? r.studentIds : [],
+                }))
+                : [];
+            if (!cancelled) setRooms(list);
 
-            const normalized: BreakoutRoom[] = list.map((r: any) => ({
-                roomId: r.roomId ?? r.id,
-                name: r.name ?? "Room",
-                studentIds: r.studentIds ?? [],
-            }));
-            console.log("raw rooms from GET:", JSON.stringify(data.rooms, null, 2));
-            if(!cancelled) setRooms(Array.isArray(data.rooms) ? data.rooms : []);
         })
         .catch((e) => {
             if (!cancelled) setError(e.message);
@@ -90,15 +90,17 @@ export default function BreakoutManager({ lobby }: {lobby: Lobby}) {
     const unassigned = lobby.students.filter((s) => !assignedIds.has(s.id));
 
     // Used for adding a room to the already existing list.
-    const addRoom = ()=>
+    const addRoom = () => {
+        const usedNumbers = rooms.map((r) => {
+            const match = /^Room (\d+)$/.exec(r.roomName);
+            return match ? Number(match[1]) : 0;
+        });
+        const nextNumber = Math.max(0, ...usedNumbers) + 1;
         updateRooms([
             ...rooms,
-            {
-                roomId: crypto.randomUUID(), 
-                roomName: `Room ${rooms.length + 1}`, 
-                studentIds: [],
-            },
+            { roomId: crypto.randomUUID(), roomName: `Room ${nextNumber}`, studentIds: [] },
         ]);
+    };
 
     // Used for intial creation of rooms.
     const createRooms = () => 
@@ -145,7 +147,7 @@ export default function BreakoutManager({ lobby }: {lobby: Lobby}) {
             {saving && <p> saving...</p>}
             
             {tooSmall && rooms.length > 0 && (
-                <p className="text-[%004E68] ">Each room needs at least 2 students before saving.</p>
+                <p className="text-[#004E68] ">Each room needs at least 2 students before saving.</p>
             )}
             
             <h1 className="text-lg font-bold">Manual Breakout Rooms</h1>
@@ -159,9 +161,13 @@ export default function BreakoutManager({ lobby }: {lobby: Lobby}) {
                 className="bg-[#FFFFFF] text-center rounded-[30px] text-[#000000]"
                 type="number"
                 min={1}
-                max={lobby.students.length}
+                max={Math.max(1, Math.floor(lobby.students.length / 2))}
                 value={roomCount}
-                onChange={(e) => setRoomCount(Number(e.target.value))}/>{" "}
+                onChange={(e) => {
+                    const maxRooms = Math.max(1, Math.floor(lobby.students.length / 2));
+                    const next = Math.min(maxRooms, Math.max(1, Number(e.target.value) || 1));
+                    setRoomCount(next);
+                }}/>{" "}
                 <button className="bg-[#A5C9E1] text-center text-[#134790] py-2 px-4 rounded-[15px] font-bold" 
                     onClick={createRooms} disabled={saving}>
                     Create Rooms
@@ -239,7 +245,7 @@ export default function BreakoutManager({ lobby }: {lobby: Lobby}) {
 
             {/* Once the teacher's selection has been made they can save it by clicking this button. */}
             <button className="bg-[#134790] text-[#FFFFFF] py-2 px-4 rounded-[15px]"
-            onClick={submitRooms} disabled={saving || !dirty || rooms.length === 0 || tooSmall}>
+            onClick={submitRooms} disabled={saving || !dirty || tooSmall}>
                 Save Breakout Rooms
             </button>
             
