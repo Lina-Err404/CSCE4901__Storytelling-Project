@@ -36,7 +36,14 @@ let io;
 app.use(express.json());
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 app.use(createClassesRouter({ db, admin, requireTeacher, getIo: () => io }));
-app.use('/api', createLobbyRoutes({ requireTeacher, requireStudent }));
+app.use(createLobbyRouter({
+  db,
+  admin,
+  requireTeacher,
+  requireStudent,
+  jwtSecret: process.env.JWT_SECRET,
+  getIo: () => io,
+}));
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((error, req, res, next) => {
   if (res.headersSent) return next(error);
