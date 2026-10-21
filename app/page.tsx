@@ -180,12 +180,12 @@ export default function Home() {
               onSubmit={handleSubmit}
             >
               <label className="form-field">
-                <span>Email or Username</span>
+                <span>Email</span>
                 <input
-                  type="text"
-                  name="username"
-                  placeholder="Enter your email or username"
-                  autoComplete="username"
+                  type="email"
+                  name="email"
+                  placeholder="Enter your email"
+                  autoComplete="email"
                   autoCapitalize="none"
                   spellCheck={false}
                   required
