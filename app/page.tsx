@@ -658,8 +658,10 @@ export default function Home() {
                             <div className="flex min-w-0 items-center gap-3">
                               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-100 font-semibold text-violet-700">
                                 {student.displayName
-                                  .split(" ")
-                                  .map((part) => part[0])
+                                  .trim()
+                                  .split(/\s+/)
+                                  .slice(0, 2)
+                                  .map((part) => part[0]?.toUpperCase())
                                   .join("")}
                               </div>
                               <div className="min-w-0">
