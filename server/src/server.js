@@ -18,10 +18,11 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const { admin, db } = require('./firebase');
-const { createFirebaseSocketAuth, createRequireStudent, createRequireTeacher } = require('./auth');
-const { createLobbyRoutes } = require('./lobbyRoutes');
+const { createRequireStudent, createRequireTeacher } = require('./auth');
 const {
   createClassesRouter,
+  createLobbyRouter,
+  createSocketAuth,
 } = require('./');
 
 const port = Number(process.env.PORT || 4000);
