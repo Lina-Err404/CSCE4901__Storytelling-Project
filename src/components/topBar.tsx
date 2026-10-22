@@ -4,7 +4,8 @@ import React, {useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 //Top Bar with Prompt Box, Writing/Drawing Mode Button, Submit, (also a timer but i forgot -Belen)
 
-function TopBar() {
+// mode + onToggleMode come from the parent so the book and this button share one state
+function TopBar({ mode = "writing", onToggleMode }: { mode?: "writing" | "drawing"; onToggleMode?: () => void }) {
     return (
 
         <header className="h-16 w-screen border-b bg-[#134790] items-center justify-center flex">
@@ -16,9 +17,11 @@ function TopBar() {
             </div>
 
           <div className="items-center justify-end flex flex-row">
-            {/*Writing/Drawing Mode Button*/}
+            {/*Writing/Drawing Mode Button: shows the mode you would switch to*/}
             <div className="mr-6 p-4 w-40 h-10 mx-auto bg-white rounded-xl border border-gray-200 flex items-center">
-              <button className="text-black mx-auto">Drawing Mode</button>
+              <button className="text-black mx-auto" onClick={onToggleMode}>
+                {mode === "writing" ? "Drawing Mode" : "Writing Mode"}
+              </button>
             </div>
             {/*Submit Button*/}
             <div className="mr-12 p-4 w-20 h-10 mx-auto bg-white rounded-xl border border-gray-200 flex items-center">

@@ -2,52 +2,82 @@
 
 import { useState, useEffect } from "react"
 import db from '../utils/firestore'
-import { doc, getDoc, setDoc } from "@firebase/firestore"
+import { collection, doc, onSnapshot, setDoc } from "@firebase/firestore"
+import BookPage from "./bookPage"
 
-const SetItem = ({ studentId }) => {
-    const [value, setValue] = useState("")
+// each student has 2 pages in the book, writing and drawing
+// everyone's pages can be read, but a student can only edit their own
+const SetItem = ({ studentId, students = [studentId], mode = "writing" }) => {
+    const myIndex = students.indexOf(studentId)
+
+    const [stories, setStories] = useState({}) // studentId -> saved story text, from Firestore
+    const [draft, setDraft] = useState(null) // unsaved text (null = nothing typed since last save)
+    const [index, setIndex] = useState(myIndex) // the page showing on the right, opens on owned page
     const [loading, setLoading] = useState(true)
-    const [saved, setSaved] = useState(false)
+    const [error, setError] = useState(false)
 
-    // read on page load to show what the student submitted before, if anything
+    // listen to everyone's pages so other students' stories update as they save
     useEffect(() => {
-        const loadItem = async () => {
-            const snap = await getDoc(doc(db, 'items', studentId))
-            if (snap.exists()) {
-                setValue(snap.data().name ?? '')
+        const unsubscribe = onSnapshot(
+            collection(db, 'items'),
+            (snapshot) => {
+                const next = {}
+                snapshot.docs.forEach((d) => { next[d.id] = d.data().name ?? "" })
+                setStories(next)
+                setLoading(false)
+            },
+            (err) => {
+                console.log('Error reading stories: ', err)
+                setError(true)
+                setLoading(false)
             }
-            setLoading(false)
-        }
+        )
+        return () => unsubscribe()
+    }, [])
 
-        loadItem()
-    }, [studentId])
+    const pages = students.map((id) => ({
+        id,
+        label: id === studentId ? "Your story" : `${id}’s story`,
+        text: id === studentId ? (draft ?? stories[id] ?? "") : (stories[id] ?? ""),
+        mine: id === studentId,
+        drawing: null, // this student's drawing for the left page, to be added later
+    }))
 
-    const handleSubmit = async (event) => {
-        event.preventDefault()
+    const saved = draft === null || draft === (stories[studentId] ?? "")
 
+    const save = async () => {
+        if (draft === null) return
         try {
-            // creates the document the first time, overwrites name after that. merge keeps any other fields
-            await setDoc(doc(db, 'items', studentId), { name: value }, { merge: true })
-            console.log("Document written with ID: ", studentId)
-            setSaved(true)
-        } catch (error) {
-            console.log('Error writing document: ', error)
+            await setDoc(doc(db, 'items', studentId), { name: draft }, { merge: true })
+            setDraft(null)
+            setError(false)
+        } catch (err) {
+            console.log('Error writing document: ', err)
+            setError(true)
         }
     }
 
-    if (loading) return <p>Loading...</p>
+    // turning a page away from owned page saves it
+    const turn = (dir) => {
+        if (index === myIndex) save()
+        setIndex((i) => i + (dir === "next" ? 1 : -1))
+    }
+
+    if (loading) return <p className="ml-10 text-neutral-500">Opening the book…</p>
 
     return (
-        <form onSubmit={handleSubmit}>
-            <textarea
-                value={value}
-                onChange={(e) => { setValue(e.target.value); setSaved(false) }} // typing to change state without writing to database
-                placeholder="Write your story segment"
-                rows={8}
-            />
-            <button type="submit">Submit</button>
-            {saved && <span> Submitted!</span>}
-        </form>
+        <BookPage
+            pages={pages}
+            index={index}
+            myIndex={myIndex}
+            mode={mode}
+            onTurn={turn}
+            onJump={() => setIndex(myIndex)}
+            onChangeText={setDraft}
+            onSave={save}
+            saved={saved}
+            error={error}
+        />
     )
 }
 
