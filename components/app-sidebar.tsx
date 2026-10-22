@@ -17,18 +17,71 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { Switch } from "@/components/ui/switch"
-import { InboxIcon, FileIcon, SendIcon, ArchiveXIcon, Trash2Icon, TerminalIcon } from "lucide-react"
+import { Shapes, UserGroup, PackageOpen, Image, Brush, Type, Letters, Lightbulb, ScrollText, BookImage } from "lucide-react"
 
 
-// This is sample data
+// This is sidebar data (each icon and their respective objects)
 const data = {
-  
+
+  //Writing Mode Buttons (navMain needs to be renamed and adjusted to their purpose in next sprint)
   navMain: [
     {
       title: "Text Boxes",
       url: "#",
       icon: (
-        <InboxIcon
+        <Type
+        />
+      ),
+      isActive: true,
+    },
+    {
+      title: "Grammar Help",
+      url: "#",
+      icon: (
+        <Letters
+        />
+      ),
+      folder: "character",
+    },
+    {
+      title: "Writing Suggestions",
+      url: "#",
+      icon: (
+        <Lightbulb
+        />
+      ),
+      folder: "props",
+    },
+    {
+      title: "Vocab Sheet",
+      url: "#",
+      icon: (
+        <ScrollText
+        />
+      ),
+      folder: "background",
+    },
+    {
+      title: "Border",
+      url: "#",
+      icon: (
+        <BookImage
+        />
+      ),
+      isActive: false,
+    },
+  ],
+  
+  /*
+
+  Drawing Mode Buttons (will be worked on next sprint)
+
+  navMain: [
+    {
+      title: "Shapes",
+      url: "#",
+      icon: (
+        <Shapes
         />
       ),
       isActive: true,
@@ -37,7 +90,7 @@ const data = {
       title: "Characters",
       url: "#",
       icon: (
-        <FileIcon
+        <UserGroup
         />
       ),
       folder: "character",
@@ -46,7 +99,7 @@ const data = {
       title: "Props",
       url: "#",
       icon: (
-        <SendIcon
+        <PackageOpen
         />
       ),
       folder: "props",
@@ -55,7 +108,7 @@ const data = {
       title: "Backgrounds",
       url: "#",
       icon: (
-        <ArchiveXIcon
+        <Image
         />
       ),
       folder: "background",
@@ -64,14 +117,16 @@ const data = {
       title: "Draw!",
       url: "#",
       icon: (
-        <Trash2Icon
+        <Brush
         />
       ),
       isActive: false,
     },
-  ],
+  ], */
   
 }
+
+//Beyond this point is beyond my scope -Belen
 
 type SidebarImage = { name: string; src: string }
 
@@ -151,6 +206,7 @@ React.useEffect(() => {
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup className="px-0">
+            {/*grid-cols-2 and image mapping should only be for drawing mode and border button (this will be worked in next sprint) */}
             <SidebarGroupContent className="grid grid-cols-2 gap-2 p-4">
   {images.map((img) => (
     <button
