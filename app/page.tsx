@@ -5,6 +5,7 @@ import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { AuthScreen } from "./auth-screen";
 import { auth, authConfigurationMissing } from "./firebase-client";
 import { StudentLobby } from "./student-lobby";
+import StartingPrompt from "@/components/StartingPrompt";
 
 type Student = { studentId: string; displayName: string };
 type SchoolClass = { classId: string; name: string };
@@ -530,7 +531,9 @@ export default function Home() {
                 Connecting to your classroom...
               </p>
             )}
-            {activeTab !== "Class Lobby" ? (
+            {activeTab === "Story Sections" ? (
+              <StartingPrompt />
+            ) : activeTab !== "Class Lobby" ? (
               <div className="rounded-2xl border border-slate-200 bg-white p-8">
                 <h2 className="text-xl font-bold">{activeTab}</h2>
                 <p className="mt-2 text-slate-600">
