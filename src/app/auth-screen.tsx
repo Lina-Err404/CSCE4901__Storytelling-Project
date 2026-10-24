@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { User } from "firebase/auth";
 import { CoverBook, CoverFrame } from "@/components/auth/CoverArtwork";
-import { logIn, signUp } from "@/app/Login_Signup_Backend/authServiceFB";
+import { logIn, signUp } from "../app/Login_Signup_Backend/authServiceFB";
 import { authConfigurationMissing } from "./firebase-client";
 
 type AuthView =
