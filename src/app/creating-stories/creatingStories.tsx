@@ -2,9 +2,9 @@
 
 import { useState } from "react"
 import Image from "next/image"
-import SetItem from "../components/SetItem"
-import ListItems from "../components/ListItems"
-import TopBar from "../components/topBar"
+import SetItem from "./components/SetItem"
+import ListItems from "./components/ListItems"
+import TopBar from "./components/topBar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { Separator } from "@/components/ui/separator"
 import {

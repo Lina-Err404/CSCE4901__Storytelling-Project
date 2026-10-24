@@ -1,7 +1,7 @@
 // bookPage.test.jsx
 import { render, screen, fireEvent, act } from "@testing-library/react"
 import "@testing-library/jest-dom"
-import BookPage from "../components/bookPage"
+import BookPage from "../app/creating-stories/components/bookPage"
 
 const pages = [
   { id: "amy", label: "amy’s story", text: "amy text", mine: false, drawing: null },
