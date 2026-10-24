@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import db from '../../../src/utils/firestore'
+import db from '@/src/utils/firestore'
 import { collection, doc, onSnapshot, setDoc } from "@firebase/firestore"
 import BookPage from "./bookPage"
 

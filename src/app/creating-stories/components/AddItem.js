@@ -1,4 +1,4 @@
-import db from '../utils/firestore'
+import db from '@/src/utils/firestore'
 import { doc, setDoc } from "@firebase/firestore"
 
 // creates the student's document one time using their student ID as the document ID

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import db from '../utils/firestore'
+import db from '@/src/utils/firestore'
 import { collection, onSnapshot } from "@firebase/firestore"
 
 const ListItems = () => {

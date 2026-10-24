@@ -1,6 +1,6 @@
 // unused for now, but can use it later to delete all the story segments after the activity is done 
 
-import db from '../utils/firestore'
+import db from '@/src/utils/firestore'
 import { doc, deleteDoc } from '@firebase/firestore'
 
 const DeleteItem = ({ id }) => {
