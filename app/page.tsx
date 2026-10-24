@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
+import { useRouter } from "next/navigation";
 import { AuthScreen } from "./auth-screen";
 import { auth, authConfigurationMissing } from "./firebase-client";
 import { StudentLobby } from "./student-lobby";
@@ -49,6 +50,7 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export default function Home() {
+  const router = useRouter();
   const devMode =
     process.env.NODE_ENV !== "production" &&
     (process.env.NEXT_PUBLIC_ALLOW_DEV_MODE === "true" ||
@@ -410,15 +412,21 @@ export default function Home() {
     );
   }
   if (!user) {
-    return (
-      <AuthScreen
-        onAuthenticated={(authedUser, role) => {
-          setUser(authedUser);
-          setUserRole(role === "teacher" ? "teacher" : null);
-        }}
-      />
-    );
-  }
+  return (
+    <AuthScreen
+      onAuthenticated={(authedUser, role) => {
+        setUser(authedUser);
+
+        if (role === "student") {
+          router.push("/join");
+          return;
+        }
+
+        setUserRole("teacher");
+      }}
+    />
+  );
+}
   if (!isTeacher) {
     return (
       <>
