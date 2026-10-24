@@ -24,7 +24,7 @@ export default function Home() {
   const [mode, setMode] = useState<"writing" | "drawing">("writing")
 
   return (
-    <main className="bg-white max-h-screen max-w-screen overflow-hidden">
+    <main className="max-h-screen max-w-screen overflow-hidden">
       <div>
         {/*Component containing top bar and buttoms */}
         <TopBar
@@ -55,7 +55,7 @@ export default function Home() {
           </SidebarInset>*/}
 
           <AppSidebar />
-          <SidebarInset className="min-h-0 overflow-hidden">
+          <SidebarInset className="min-h-0 overflow-hidden bg-[#C3D0E5]">
             <div className="flex min-h-0 flex-1 flex-col items-center">
               {/*Title of the page you are on, plus the (testing only) student picker */}
               <div className="flex w-full items-center justify-between px-6 py-1">
@@ -76,7 +76,7 @@ export default function Home() {
             </div>
           </SidebarInset>
         </SidebarProvider>
-        <footer className="sticky bottom-0 z-20 h-(--footer-height) border-t bg-background" />
+        
       </div>
     </main>
   );
