@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "../../../lib/firebaseAdmin";
+import { db } from "@/lib/firebaseAdmin";
 
 //this gets the teachers custom starting prompt
 export async function POST(request: NextRequest) {
