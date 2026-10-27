@@ -13,6 +13,8 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 
+import '../creating-stories/creating-stories.css'
+
 // 2 pages in the book per student (drawing page on the left, writing page on the right), in this order. TODO: change this in later sprint to use the assigned places / sections
 const STUDENTS = ["student-1", "student-2", "student-3"]
 
@@ -59,10 +61,10 @@ export default function Home() {
             <div className="flex min-h-0 flex-1 flex-col items-center">
               {/*Title of the page you are on, plus the (testing only) student picker */}
               <div className="flex w-full items-center justify-between px-6 py-1">
-                <h1 className="text-xl">{mode === "writing" ? "Writing Page" : "Drawing Page"}</h1>
+                <h1 className="text-xl text-black">{mode === "writing" ? "Writing Page" : "Drawing Page"}</h1>
 
                 {/* TESTING ONLY: pick which student you are */}
-                <select value={studentId} onChange={(e) => setStudentId(e.target.value)}>
+                <select value={studentId} onChange={(e) => setStudentId(e.target.value)} className="text-black">
                   {STUDENTS.map((id) => (
                     <option key={id} value={id}>{id}</option>
                   ))}

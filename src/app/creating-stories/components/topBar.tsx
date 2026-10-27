@@ -15,7 +15,7 @@ function TopBar({ mode = "writing", onToggleMode }: { mode?: "writing" | "drawin
           <div className="flex justify-start w-5 h-5 bg-[#F1EADF] rounded-full inline-flex items-center p-5 ml-2">
           </div>
           <div className="flex justify-center w-20 h-10 bg-[#F1EADF] rounded-xl items-center border border-gray-200 mx-auto ml-5">
-            <h1>25:07</h1>
+            <h1 className="text-black mx-auto">25:07</h1>
           </div>
 
             <div className="p-4 max-w-200 max-h-10 mx-auto bg-white rounded-xl shadow-md border border-gray-200 items-center flex">
