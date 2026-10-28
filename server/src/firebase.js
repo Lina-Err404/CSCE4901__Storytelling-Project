@@ -27,13 +27,21 @@ if (process.env.GOOGLE_APPLICATION_CREDENTIALS && !path.isAbsolute(process.env.G
 }
 
 const projectId = process.env.GCLOUD_PROJECT || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'demo-storytelling';
-const app = admin.apps.length
-  ? admin.app()
-  : admin.initializeApp(
-      process.env.FIREBASE_AUTH_EMULATOR_HOST || process.env.FIRESTORE_EMULATOR_HOST
-        ? { projectId }
-        : { credential: admin.credential.applicationDefault(), projectId },
-    );
+const emulating = process.env.FIREBASE_AUTH_EMULATOR_HOST || process.env.FIREBASE_EMULATOR_HOST
+
+let options;
+if (emulating) {
+  options = { projectId };
+} else if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  options = {
+    credential: admin.credential.cert(serviceAccount),
+    projectId: serviceAccount.project_id,
+  };
+} else {
+  options = { credential: admin.credential.applicationDefault(), projectId }
+}
+const app = admin.apps.length ? admin.app() : admin.initializeApp(options);
 const db = admin.firestore(app);
 
 module.exports = { admin, db };
