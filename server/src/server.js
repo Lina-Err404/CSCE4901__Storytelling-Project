@@ -22,6 +22,7 @@ const { createRequireStudent, createRequireTeacher } = require('./auth');
 const {
   createClassesRouter,
   createLobbyRouter,
+  createRandomBreakoutRoutes,
   createSocketAuth,
 } = require('./');
 
@@ -44,6 +45,12 @@ app.use(createLobbyRouter({
   jwtSecret: process.env.JWT_SECRET,
   getIo: () => io,
 }));
+app.use(
+  createRandomBreakoutRoutes({
+    db,
+    requireTeacher,
+  })
+);
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((error, req, res, next) => {
   if (res.headersSent) return next(error);
