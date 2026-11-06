@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
+const { supabase } = require('./supabase');
 
 const STUDENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const CLASS_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
@@ -180,70 +181,119 @@ function createLobbyRouter({ db, admin, requireTeacher, requireStudent, jwtSecre
   });
 
   router.post('/lobbies/join', joinLimiter, requireStudent, async (req, res) => {
-    const { code } = req.body || {};
-    const studentId = req.user.uid;
-    if (
-      typeof code !== 'string' ||
-      !/^[A-HJ-NP-Z2-9]{6}$/i.test(code.trim()) ||
-      !validStudentId(studentId)
-    ) {
-      return res.status(401).json(JOIN_FAILURE);
+  const { code } = req.body || {};
+  const studentId = req.user.uid;
+
+  if (
+    typeof code !== 'string' ||
+    !/^[A-Z0-9]{6}$/i.test(code.trim()) ||
+    !validStudentId(studentId)
+  ) {
+    return res.status(400).json({ error: 'Invalid lobby code' });
+  }
+
+  const normalizedCode = code.trim().toUpperCase();
+
+  try {
+    const { data: lobby, error: lobbyError } = await supabase
+      .from('lobbies')
+      .select('lobby_id, class_id, join_code, lobby_name, status')
+      .eq('join_code', normalizedCode)
+      .maybeSingle();
+
+    if (lobbyError) {
+      console.error('Lobby lookup error:', lobbyError);
+      return res.status(500).json({ error: 'Could not join lobby' });
     }
 
-    try {
-      const codeSnapshot = await db.collection('lobbyCodes').doc(code.trim().toUpperCase()).get();
-      if (!codeSnapshot.exists) {
-        return res.status(401).json(JOIN_FAILURE);
-      }
+    if (!lobby) {
+      return res.status(404).json({ error: 'Lobby not found' });
+    }
 
-      const lobbyId = codeSnapshot.data().lobbyId;
-      if (typeof lobbyId !== 'string' || lobbyId.length === 0) {
-        return res.status(401).json(JOIN_FAILURE);
-      }
+    if (lobby.status !== 'waiting') {
+      return res.status(409).json({ error: 'Lobby has already started' });
+    }
 
-      const lobbyRef = db.collection('lobbies').doc(lobbyId);
-      const joinResult = await db.runTransaction(async (transaction) => {
-        const lobbySnapshot = await transaction.get(lobbyRef);
-        if (!lobbySnapshot.exists || lobbySnapshot.data().status !== 'open') return null;
+    const { data: enrollment, error: enrollmentError } = await supabase
+      .from('class_students')
+      .select('student_id')
+      .eq('class_id', lobby.class_id)
+      .eq('student_id', studentId)
+      .maybeSingle();
 
-        const classRef = db.collection('classes').doc(lobbySnapshot.data().classId);
-        const rosterRef = classRef.collection('roster').doc(studentId);
-        const [classSnapshot, rosterSnapshot] = await Promise.all([
-          transaction.get(classRef),
-          transaction.get(rosterRef),
-        ]);
-        if (!rosterSnapshot.exists && !classSnapshot.data()?.studentIds?.includes(studentId)) {
-          return null;
-        }
+    if (enrollmentError) {
+      console.error('Enrollment lookup error:', enrollmentError);
+      return res.status(500).json({ error: 'Could not verify enrollment' });
+    }
 
-        const seatRef = lobbyRef.collection('students').doc(studentId);
-        const seatSnapshot = await transaction.get(seatRef);
-        if (seatSnapshot.data()?.kicked === true) return null;
-
-        const providedName = typeof req.body?.name === 'string' ? req.body.name : null;
-        const fallbackName = cleanDisplayName(providedName) || cleanDisplayName(studentId) || 'Student';
-        if (!fallbackName) return null;
-
-        transaction.set(seatRef, {
-          displayName: fallbackName,
-          joinedAt: admin.firestore.FieldValue.serverTimestamp(),
-          kicked: false,
-        }, { merge: true });
-        return { displayName: fallbackName };
+    if (!enrollment) {
+      return res.status(403).json({
+        error: 'Student is not enrolled in this class',
       });
-
-      if (!joinResult) return res.status(401).json(JOIN_FAILURE);
-
-      const token = jwt.sign(
-        { role: 'student', lobbyId, studentId },
-        jwtSecret,
-        { algorithm: 'HS256', expiresIn: '4h' },
-      );
-      return res.json({ token, lobbyId, displayName: joinResult.displayName });
-    } catch (error) {
-      return res.status(500).json({ error: 'Internal server error' });
     }
-  });
+
+    const { data: existingParticipant, error: participantError } =
+      await supabase
+        .from('lobby_participants')
+        .select('lobby_id, student_id, status')
+        .eq('lobby_id', lobby.lobby_id)
+        .eq('student_id', studentId)
+        .maybeSingle();
+
+    if (participantError) {
+      console.error('Participant lookup error:', participantError);
+      return res.status(500).json({ error: 'Could not join lobby' });
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('display_name')
+      .eq('id', studentId)
+      .maybeSingle();
+
+    const providedName =
+      typeof req.body?.name === 'string' ? req.body.name : null;
+
+    const displayName =
+      cleanDisplayName(profile?.display_name) ||
+      cleanDisplayName(providedName) ||
+      'Student';
+
+    if (!existingParticipant) {
+      const { error: insertError } = await supabase
+        .from('lobby_participants')
+        .insert({
+          lobby_id: lobby.lobby_id,
+          student_id: studentId,
+        });
+
+      if (insertError) {
+        console.error('Participant insert error:', insertError);
+        return res.status(500).json({ error: 'Could not join lobby' });
+      }
+    }
+
+    const token = jwt.sign(
+      {
+        role: 'student',
+        lobbyId: lobby.lobby_id,
+        studentId,
+      },
+      jwtSecret,
+      { algorithm: 'HS256', expiresIn: '4h' },
+    );
+
+    return res.json({
+      token,
+      lobbyId: lobby.lobby_id,
+      displayName,
+      alreadyJoined: Boolean(existingParticipant),
+    });
+  } catch (error) {
+    console.error('Join lobby error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
   router.patch('/lobbies/:id', requireTeacher, requireLobbyOwner, async (req, res) => {
     const { status } = req.body || {};
