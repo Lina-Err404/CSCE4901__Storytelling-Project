@@ -9,7 +9,7 @@ const LIFT_PX = 28 // how far the page rises off the book at the middle of the t
 const SERIF = "Georgia, 'Times New Roman', serif"
 const TEXT_SIZE = "clamp(13px, calc(var(--ph) * 0.045), 24px)"
 const SMALL_SIZE = "clamp(11px, calc(var(--ph) * 0.03), 15px)"
-const EDGE = "28px" // gap left between the book and the edge of the stage on the side where a whole page is showing.
+const EDGE = "300px" // gap left between the book and the edge of the stage on the side where a whole page is showing.
 
 const clamp01 = (v) => Math.min(1, Math.max(0, v))
 const ease = (t) => 0.5 - 0.5 * Math.cos(Math.PI * t)

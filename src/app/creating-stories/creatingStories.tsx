@@ -5,6 +5,9 @@ import Image from "next/image"
 import SetItem from "./components/SetItem"
 import ListItems from "./components/ListItems"
 import TopBar from "./components/topBar"
+import StampSidePanel from "./components/stampSidePanel"
+import DrawingSidePanel from "./components/drawingSidePanel"
+import WritingSidePanel from "./components/writingSidePanel"
 import { AppSidebar } from "@/components/app-sidebar"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -26,59 +29,53 @@ export default function Home() {
   const [mode, setMode] = useState<"writing" | "drawing">("writing")
 
   return (
-    <main className="max-h-screen max-w-screen overflow-hidden">
-      <div>
+    <main className="max-h-screen max-w-screen overflow-hidden static">
+      
         {/*Component containing top bar and buttoms */}
         <TopBar
           mode={mode}
           onToggleMode={() => setMode((m) => (m === "writing" ? "drawing" : "writing"))}
         />
-        <SidebarProvider
-          className="h-[calc(100svh-4rem-var(--footer-height,0px))] min-h-0"
-          style={
-            {
-              "--sidebar-width": "400px",
-            } as React.CSSProperties
-          }
-        >
 
-          {/*
-      This contains the trigger for the sidebar that will be reworked in the next sprint
-      To open and close the side bar: tap anywhere on the screen that isn't the sidebar and hit CTRL-B
+      <div className="flex h-screen w-screen relative">
 
-         <SidebarInset>
-            <header className="h-16 w-full border-b bg-[#134790]">
-            <SidebarTrigger className="-ml-1" />
-            <Separator
-              orientation="vertical"
-              className="mr-2 data-vertical:h-4 data-vertical:self-auto"
-            />
-            </header>
-          </SidebarInset>*/}
+        {/*Component containing left side panel for writing mode (writing functions)
+            Should only appear when in writing mode
+            is currently a blank panel
 
-          <AppSidebar />
-          <SidebarInset className="min-h-0 overflow-hidden bg-[#C3D0E5]">
-            <div className="flex min-h-0 flex-1 flex-col items-center">
-              {/*Title of the page you are on, plus the (testing only) student picker */}
-              <div className="flex w-full items-center justify-between px-6 py-1">
-                <h1 className="text-xl text-black">{mode === "writing" ? "Writing Page" : "Drawing Page"}</h1>
-
-                {/* TESTING ONLY: pick which student you are */}
-                <select value={studentId} onChange={(e) => setStudentId(e.target.value)} className="text-black">
-                  {STUDENTS.map((id) => (
-                    <option key={id} value={id}>{id}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/*The book. SetItem loads/saves the stories and renders the book (bookPage) */}
-              <SetItem key={studentId} studentId={studentId} students={STUDENTS} mode={mode} />
-
-              {/* <ListItems /> */}
-            </div>
-          </SidebarInset>
-        </SidebarProvider>
+            <WritingSidePanel/>
+        */}
         
+
+        {/*Component containing left side panel for drawing mode (stamps and shapes)
+            Should only appear when in drawing mode
+        */}
+        <StampSidePanel />
+          
+        <div className="flex flex-1 flex-col items-center overflow-hidden bg-[#C3D0E5] pb-15 z-0 absolute h-screen w-screen">
+          {/*Title of the page you are on, plus the (testing only) student picker */}
+          <div className="flex w-full items-center justify-center px-6 py-1">
+            <h1 className="text-xl text-black">{mode === "writing" ? "Writing Page" : "Drawing Page"}</h1>
+
+            {/* TESTING ONLY: pick which student you are */}
+            <select value={studentId} onChange={(e) => setStudentId(e.target.value)} className="text-black">
+              {STUDENTS.map((id) => (
+                <option key={id} value={id}>{id}</option>
+              ))}
+            </select>
+          </div>
+
+          {/*The book. SetItem loads/saves the stories and renders the book (bookPage) */}
+          <SetItem key={studentId} studentId={studentId} students={STUDENTS} mode={mode} />
+
+          {/* <ListItems /> */}
+        </div>
+        
+        {/*Component containing right side panel for drawing mode (drawing tools)
+            Should only appear when in drawing mode
+        */}
+        <DrawingSidePanel/>
+                  
       </div>
     </main>
   );
