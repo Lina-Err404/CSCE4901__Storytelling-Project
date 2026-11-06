@@ -84,7 +84,7 @@ function DrawingBody({ page, number }) {
     return (
         <>
             <span className="absolute text-[#9a9aa8]" style={{ top: "5.5%", left: "6%", right: "8%", fontSize: SMALL_SIZE }}>
-                {page.mine ? "Your drawing" : `${page.id}’s drawing`}
+                {page.mine ? "Your drawing" : `${page.name}’s drawing`}
             </span>
             <div
                 className="absolute rounded-xl bg-[#f7f7fa]"
