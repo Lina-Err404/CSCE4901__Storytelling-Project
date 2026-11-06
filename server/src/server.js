@@ -18,6 +18,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const { admin, db } = require('./firebase');
+const { createTimerRouter } = require('./timerRoutes');
 const { createRequireStudent, createRequireTeacher } = require('./auth');
 const {
   createClassesRouter,
@@ -44,6 +45,12 @@ app.use(createLobbyRouter({
   jwtSecret: process.env.JWT_SECRET,
   getIo: () => io,
 }));
+
+// R5: Time Limit routes
+app.use(createTimerRouter({
+  getIo: () => io
+}));
+
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((error, req, res, next) => {
   if (res.headersSent) return next(error);
