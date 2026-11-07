@@ -23,7 +23,9 @@ const {
   createClassesRouter,
   createLobbyRouter,
   createSocketAuth,
+  createStoryRouter,
 } = require('./');
+const { getSupabaseClient } = require('./supabase');
 
 const port = Number(process.env.PORT || 4000);
 
@@ -44,9 +46,11 @@ app.use(createLobbyRouter({
   jwtSecret: process.env.JWT_SECRET,
   getIo: () => io,
 }));
+app.use(createStoryRouter({ requireStudent, getSupabase: getSupabaseClient }));
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((error, req, res, next) => {
   if (res.headersSent) return next(error);
+  console.error('API request failed:', error);
   return res.status(500).json({ error: 'Internal server error' });
 });
 
