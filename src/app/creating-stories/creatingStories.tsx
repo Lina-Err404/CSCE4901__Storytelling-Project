@@ -25,6 +25,9 @@ const STUDENTS = ["96947d15-5338-4a61-8d17-834c1404018a", "04c62b9d-7620-4b76-8b
 // TESTING ONLY: Replace with the room's story later
 const STORY_ID = "b06ff1ad-f383-4b77-be1f-7ed5192ef14d"
 
+const DESIGN_W = 1600
+const DESIGN_H = 900
+
 export default function Home() {
   // TESTING ONLY: pick which student you are. Replace with the logged-in student's id later.
   const [studentId, setStudentId] = useState(STUDENTS[0])
@@ -42,18 +45,38 @@ export default function Home() {
   // Shared by the top bar button and the book.
   const [mode, setMode] = useState<"writing" | "drawing">("writing")
 
+  const [view, setView] = useState<{ scale: number; w: number; h: number } | null>(null)
+  useEffect(() => {
+    const fit = () => {
+      const scale = Math.min(window.innerWidth / DESIGN_W, window.innerHeight / DESIGN_H)
+      setView({ scale, w: window.innerWidth / scale, h: window.innerHeight / scale })
+    }
+    fit()
+    window.addEventListener("resize", fit)
+    return () => window.removeEventListener("resize", fit)
+  }, [])
+
   return (
-    <main className="max-h-screen max-w-screen overflow-hidden static">
+    <main className="fixed inset-0 overflow-hidden bg-[#C3D0E5]">
+      <div
+        className="flex origin-top-left flex-col overflow-hidden"
+        style={{
+          width: view?.w ?? DESIGN_W,
+          height: view?.h ?? DESIGN_H,
+          transform: `scale(${view?.scale ?? 1})`,
+          visibility: view ? "visible" : "hidden",
+        }}
+      >
 
-      {/*Component containing top bar and buttoms */}
-      <TopBar
-        mode={mode}
-        onToggleMode={() => setMode((m) => (m === "writing" ? "drawing" : "writing"))}
-      />
+        {/*Component containing top bar and buttoms */}
+        <TopBar
+          mode={mode}
+          onToggleMode={() => setMode((m) => (m === "writing" ? "drawing" : "writing"))}
+        />
 
-      <div className="flex h-screen w-screen relative">
+        <div className="relative min-h-0 flex-1">
 
-        {/*Component containing left side panel for writing mode (writing functions)
+          {/*Component containing left side panel for writing mode (writing functions)
             Should only appear when in writing mode
             is currently a blank panel
 
@@ -61,35 +84,38 @@ export default function Home() {
         */}
 
 
-        {/*Component containing left side panel for drawing mode (stamps and shapes)
+          {/*Component containing left side panel for drawing mode (stamps and shapes)
             Should only appear when in drawing mode
         */}
-        <StampSidePanel />
+          <StampSidePanel />
 
-        <div className="flex flex-1 flex-col items-center overflow-hidden bg-[#C3D0E5] pb-15 z-0 absolute h-screen w-screen">
-          {/*Title of the page you are on, plus the (testing only) student picker */}
-          <div className="flex w-full items-center justify-center px-6 py-1">
-            <h1 className="text-xl text-black">{mode === "writing" ? "Writing Page" : "Drawing Page"}</h1>
+          <div className="absolute inset-0 z-0 flex flex-col items-center justify-center overflow-hidden bg-[#C3D0E5] pb-2">
+            <div className="flex w-[1600px] shrink-0 flex-col items-center" style={{ height: DESIGN_H - 65 }}>
+              {/*Title of the page you are on, plus the (testing only) student picker */}
+              <div className="flex w-full shrink-0 items-center justify-center gap-4 px-6 py-1">
+                <h1 className="text-xl text-black">{mode === "writing" ? "Writing Page" : "Drawing Page"}</h1>
 
-            {/* TESTING ONLY: pick which student you are */}
-            <select value={studentId} onChange={(e) => setStudentId(e.target.value)} className="text-black">
-              {STUDENTS.map((id) => (
-                <option key={id} value={id}>{id}</option>
-              ))}
-            </select>
+                {/* TESTING ONLY: pick which student you are */}
+                <select value={studentId} onChange={(e) => setStudentId(e.target.value)} className="text-black">
+                  {STUDENTS.map((id) => (
+                    <option key={id} value={id}>{names[id] ?? id}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/*The book. SetItem loads/saves the stories and renders the book (bookPage) */}
+              <SetItem key={studentId} storyId={STORY_ID} studentId={studentId} students={STUDENTS} mode={mode} />
+
+              {/* <ListItems /> */}
+            </div>
           </div>
 
-          {/*The book. SetItem loads/saves the stories and renders the book (bookPage) */}
-          <SetItem key={studentId} storyId={STORY_ID} studentId={studentId} students={STUDENTS} mode={mode} />
-
-          {/* <ListItems /> */}
-        </div>
-
-        {/*Component containing right side panel for drawing mode (drawing tools)
+          {/*Component containing right side panel for drawing mode (drawing tools)
             Should only appear when in drawing mode
         */}
-        <DrawingSidePanel />
+          <DrawingSidePanel />
 
+        </div>
       </div>
     </main>
   );
