@@ -1,41 +1,129 @@
 "use client"
 
-//there is definitely a more easier way to write this code oops... my apologizes -Belen
-//Prototype of how the panel should be formatted
-//Buttons have labels that should be replaced with Icons 
+import React, { useState } from 'react'
+
+// Organized by category matching your folder structure
+const STAMP_FOLDERS = {
+  background: [
+    'Untitled48_20240711082655.png',
+    'Untitled48_20240711120258.png',
+    'Untitled90_20260213150211.png',
+    'Untitled96_20260325145211.png',
+    'Untitled103_20260424135732.png',
+    'Untitled103_20260424135815.png',
+    'Untitled116.png',
+  ],
+  character: [
+    '20220728_125054.png',
+    'Untitled47_20240711030917.png',
+    'Untitled47_20240711031924.png',
+    'Untitled92_20260320204339.png',
+    'Untitled95_20260320204611.png',
+    'Untitled128_20261017210110.png',
+  ],
+  props: [
+    'Untitled48_20240711083849.png',
+    'Untitled48_20240711102837.png',
+    'Untitled48_20240711102842.png',
+    'Untitled48_20240711102844.png',
+    'Untitled48_20240713232210.png',
+    'Untitled96_20260326001950.png',
+    'Untitled96_20260402132903.png',
+  ],
+}
+
+const CATEGORY_KEYS = Object.keys(STAMP_FOLDERS) as (keyof typeof STAMP_FOLDERS)[]
 
 function StampSidePanel() {
+  const [activeTab, setActiveTab] = useState<'shapes' | 'stamps'>('stamps')
+  const [categoryIndex, setCategoryIndex] = useState(0)
+
+  const currentCategory = CATEGORY_KEYS[categoryIndex]
+  const currentStickers = STAMP_FOLDERS[currentCategory] || []
+
+  const handlePrev = () => {
+    setCategoryIndex((prev) => (prev - 1 + CATEGORY_KEYS.length) % CATEGORY_KEYS.length)
+  }
+
+  const handleNext = () => {
+    setCategoryIndex((prev) => (prev + 1) % CATEGORY_KEYS.length)
+  }
+
   return (
+    <div className="absolute top-10 bottom-16 left-0 z-10 flex w-68 flex-col rounded-r-4xl border-3 border-solid border-[#334670] bg-[#497BC3] p-3.5 pt-4 shadow-xl select-none">
 
-    <div className="absolute top-10 bottom-16 left-0 z-10 flex w-70 flex-col rounded-r-4xl border-3 border-solid border-[#334670] bg-[#497BC3] p-3 pt-5">
-
-      {/*Container with Stamps and Shapes buttons*/}
-      <div className="mb-4 grid h-12 shrink-0 grid-cols-2 divide-x-2 divide-solid divide-[#D85728] rounded-2xl border-3 border-solid border-black bg-[#FFC250]">
-        <div className="flex items-center justify-center">shapes</div>
-        <div className="flex items-center justify-center">stamps</div>
+      {/* Shapes / Stamps Segmented Toggle */}
+      <div className="h-11 bg-[#D4D4D8] grid grid-cols-2 divide-x-3 divide-solid divide-black mb-4 rounded-xl border-3 border-black border-solid flex-shrink-0 overflow-hidden shadow-[0_2px_0_#000]">
+        <button
+          type="button"
+          onClick={() => setActiveTab('shapes')}
+          className={`flex items-center justify-center cursor-pointer font-bold text-sm text-black transition-colors ${activeTab === 'shapes' ? 'bg-[#FFC250]' : 'bg-[#E4E4E7] hover:bg-[#F4F4F5]'
+            }`}
+        >
+          shapes
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('stamps')}
+          className={`flex items-center justify-center cursor-pointer font-bold text-sm text-black transition-colors ${activeTab === 'stamps' ? 'bg-[#FFC250]' : 'bg-[#E4E4E7] hover:bg-[#F4F4F5]'
+            }`}
+        >
+          stamps
+        </button>
       </div>
 
-      {/*Container with Previous/Next buttons and Title for the current stamp/shape folder being viewed*/}
-      <div className="mb-4 flex shrink-0 items-center justify-between gap-2">
-        <div className="flex">prev</div>
-        <div className="flex min-w-0 flex-1 justify-center truncate rounded-sm border-3 border-solid border-black bg-[#AAAAAA] p-3">current stamps</div>
-        <div className="flex">next</div>
-      </div>
-
-      {/*Temporary grid of how the images should be arranged and should be scrollable*/}
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl bg-black p-2">
-        <div className="grid grid-cols-2 gap-2">
-          <div className="aspect-square rounded-sm border-3 border-solid border-white bg-[#DDDDDD]"></div>
-          <div className="aspect-square rounded-sm border-3 border-solid border-white bg-[#DDDDDD]"></div>
-          <div className="aspect-square rounded-sm border-3 border-solid border-white bg-[#DDDDDD]"></div>
-          <div className="aspect-square rounded-sm border-3 border-solid border-white bg-[#DDDDDD]"></div>
-          <div className="aspect-square rounded-sm border-3 border-solid border-white bg-[#DDDDDD]"></div>
-          <div className="aspect-square rounded-sm border-3 border-solid border-white bg-[#DDDDDD]"></div>
-          <div className="aspect-square rounded-sm border-3 border-solid border-white bg-[#DDDDDD]"></div>
-          <div className="aspect-square rounded-sm border-3 border-solid border-white bg-[#DDDDDD]"></div>
+      {/* Category Switcher (Prev / Current Folder / Next) */}
+      <div className="h-10 flex justify-between items-center gap-1.5 mb-4 flex-shrink-0">
+        <button
+          type="button"
+          onClick={handlePrev}
+          style={{ fontSize: '12px', lineHeight: '1', padding: '0 8px' }}
+          className="h-full flex items-center justify-center bg-[#FFC250] hover:bg-[#ffb020] active:translate-y-0.5 cursor-pointer rounded-md border-3 border-black font-bold text-black shadow-[0_2px_0_#000]"
+        >
+          ◀
+        </button>
+        <div className="flex-1 h-full flex items-center justify-center bg-white px-2 rounded-md border-solid border-3 border-black text-xs font-bold text-black uppercase tracking-wide shadow-[0_2px_0_#000] truncate">
+          {activeTab === 'shapes' ? 'basic shapes' : currentCategory}
         </div>
+        <button
+          type="button"
+          onClick={handleNext}
+          style={{ fontSize: '12px', lineHeight: '1', padding: '0 8px' }}
+          className="h-full flex items-center justify-center bg-[#FFC250] hover:bg-[#ffb020] active:translate-y-0.5 cursor-pointer rounded-md border-3 border-black font-bold text-black shadow-[0_2px_0_#000]"
+        >
+          ▶
+        </button>
+      </div>
+
+      {/* Scrollable Grid dynamically mapping the folder files */}
+      <div className="min-h-0 flex-1 bg-[#1E293B] rounded-2xl border-3 border-black p-3 overflow-y-auto shadow-inner">
+        {activeTab === 'shapes' ? (
+          <div className="text-center text-white text-xs font-bold pt-10">Basic Shapes coming soon!</div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 h-max">
+            {currentStickers.map((filename, index) => (
+              <button
+                key={index}
+                type="button"
+                style={{
+                  backgroundImage:
+                    'linear-gradient(145deg, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0) 50%, rgba(0,0,0,0.12) 100%)',
+                }}
+                className="bg-[#E2E8F0] rounded-lg border-solid border-black border-3 aspect-square flex items-center justify-center hover:bg-white hover:scale-105 active:scale-95 cursor-pointer transition-all shadow-[0_2px_0_#000] overflow-hidden p-1.5"
+                onClick={() => console.log(`Selected stamp: /images/${currentCategory}/${filename}`)}
+              >
+                <img
+                  src={`/images/${currentCategory}/${filename}`}
+                  alt={`${currentCategory} stamp ${index + 1}`}
+                  className="max-w-full max-h-full object-contain drop-shadow-sm pointer-events-none"
+                />
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
 }
-export default StampSidePanel;
+
+export default StampSidePanel
