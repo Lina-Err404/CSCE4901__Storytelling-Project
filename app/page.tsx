@@ -1,13 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-
-interface GrammarItem {
-  id: string;
-  original: string;
-  replacement: string;
-  explanation?: string;
-}
+import GrammarSuggestions from "@/components/grammar/GrammarSuggestions";
 
 export default function StoryWritingPage() {
   const [storyText, setStoryText] = useState(
@@ -15,14 +9,14 @@ export default function StoryWritingPage() {
   );
 
   const [activeTab, setActiveTab] = useState<"S" | "G" | null>(null);
-  const [activeMode, setActiveMode] = useState<"grammar" | "generate" | null>(
-      null
+  const [activeMode, setActiveMode] = useState<"grammar" | "generate">(
+      "grammar"
   );
-  const [grammarList, setGrammarList] = useState<GrammarItem[]>([]);
   const [storyIdeas, setStoryIdeas] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const runAssistant = async (mode: "grammar" | "generate") => {
+  const generateStoryIdeas = async () => {
+    const mode = "generate";
     setActiveMode(mode);
     setLoading(true);
     try {
@@ -32,11 +26,7 @@ export default function StoryWritingPage() {
         body: JSON.stringify({ text: storyText, mode }),
       });
       const data = await res.json();
-      if (mode === "grammar") {
-        setGrammarList(data.grammar || []);
-      } else {
-        setStoryIdeas(data.ideas || []);
-      }
+      setStoryIdeas(data.ideas || []);
     } catch (err) {
       console.error("Failed to fetch from Groq:", err);
     } finally {
@@ -46,13 +36,6 @@ export default function StoryWritingPage() {
 
   const handleTabClick = (tab: "S" | "G") => {
     setActiveTab(activeTab === tab ? null : tab);
-  };
-
-  const handleAcceptGrammar = (item: GrammarItem) => {
-    if (item.original && storyText.includes(item.original)) {
-      setStoryText((prev) => prev.replace(item.original, item.replacement));
-    }
-    setGrammarList((prev) => prev.filter((g) => g.id !== item.id));
   };
 
   return (
@@ -99,12 +82,18 @@ export default function StoryWritingPage() {
           {/* Simple S and G Buttons */}
           <div className="flex flex-col gap-12">
             <button
+                id="suggestions-toggle"
+                aria-label="Suggestions"
+                aria-expanded={activeTab === "S"}
                 onClick={() => handleTabClick("S")}
                 className="h-10 w-12 rounded-r border border-l-0 border-gray-700 bg-[#ebdcf5] text-lg font-bold text-[#4a1d3d]"
             >
               S
             </button>
             <button
+                id="guidelines-toggle"
+                aria-label="Guidelines"
+                aria-expanded={activeTab === "G"}
                 onClick={() => handleTabClick("G")}
                 className="h-10 w-12 rounded-r border border-l-0 border-gray-700 bg-[#ccf2f4] text-lg font-bold text-[#143d3f]"
             >
@@ -123,14 +112,27 @@ export default function StoryWritingPage() {
 
         {/* Simple Right-Side Pane */}
         {activeTab && (
-            <div className="fixed top-0 right-0 z-20 flex h-full w-[340px] flex-col border-l-2 border-gray-500 bg-[#d6e8eb] p-4 font-sans text-gray-900 shadow-lg">
-              <div className="mb-4 flex items-center justify-between border-b border-gray-400 pb-2">
-                <h2 className="font-serif text-lg font-bold text-gray-900">
+            <div
+                role="region"
+                aria-labelledby="writing-panel-title"
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    setActiveTab(null);
+                    document.getElementById(activeTab === "S" ? "suggestions-toggle" : "guidelines-toggle")?.focus();
+                  }
+                }}
+                className="fixed right-0 bottom-0 left-0 z-20 flex max-h-[42dvh] flex-col rounded-t-3xl border border-[#bbcdd5] bg-[#edf3f4] p-4 font-sans text-gray-900 shadow-xl lg:top-0 lg:left-auto lg:h-dvh lg:max-h-none lg:w-[360px] lg:rounded-none lg:p-5">
+              <div className="mb-3 flex shrink-0 items-center justify-between border-b border-gray-400 pb-2">
+                <h2 id="writing-panel-title" className="font-serif text-xl font-bold text-[#284b58]">
                   {activeTab === "S" ? "Suggestions" : "Guidelines"}
                 </h2>
                 <button
-                    onClick={() => setActiveTab(null)}
-                    className="px-2 text-sm font-bold text-gray-900 hover:text-black"
+                    aria-label="Close writing panel"
+                    onClick={() => {
+                      setActiveTab(null);
+                      document.getElementById(activeTab === "S" ? "suggestions-toggle" : "guidelines-toggle")?.focus();
+                    }}
+                    className="flex h-11 w-11 items-center justify-center rounded-xl text-lg text-slate-600 hover:bg-white/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0a4d68]"
                 >
                   X
                 </button>
@@ -138,78 +140,35 @@ export default function StoryWritingPage() {
 
               {activeTab === "S" ? (
                   <>
-                    {/* 2 Simple Buttons */}
-                    <div className="mb-4 flex gap-2">
-                      <button
-                          onClick={() => runAssistant("grammar")}
-                          disabled={loading}
-                          className="flex-1 rounded border border-gray-600 bg-[#e3dff0] py-2 text-xs font-bold text-gray-900 hover:bg-[#d4cef0]"
-                      >
-                        Check Grammar
-                      </button>
-                      <button
-                          onClick={() => runAssistant("generate")}
-                          disabled={loading}
-                          className="flex-1 rounded border border-gray-600 bg-[#ebdcf5] py-2 text-xs font-bold text-gray-900 hover:bg-[#dec7ed]"
-                      >
-                        Generate
-                      </button>
-                    </div>
+                    <GrammarSuggestions
+                        text={storyText}
+                        onTextChange={setStoryText}
+                        showSuggestions={activeMode === "grammar"}
+                        onShowSuggestions={() => setActiveMode("grammar")}
+                        toolbarAction={
+                          <button
+                              onClick={generateStoryIdeas}
+                              disabled={loading}
+                              className="min-h-11 flex-1 rounded-xl border border-[#cbb8d5] bg-[#ebdcf5] px-3 py-2 text-sm font-semibold text-[#514267] hover:bg-[#dec7ed] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0a4d68] disabled:cursor-wait disabled:opacity-60"
+                          >
+                            Generate
+                          </button>
+                        }
+                    />
 
-                    {/* Simple Output List */}
-                    <div className="flex-1 space-y-2 overflow-y-auto text-gray-900">
-                      {loading && (
-                          <p className="text-xs font-medium text-gray-900">
-                            Loading...
-                          </p>
-                      )}
-
-                      {!loading &&
-                          activeMode === "grammar" &&
-                          (grammarList.length === 0 ? (
-                              <p className="text-xs text-gray-900">
-                                No grammar mistakes found.
-                              </p>
-                          ) : (
-                              grammarList.map((item) => (
-                                  <div
-                                      key={item.id}
-                                      className="rounded border border-gray-500 bg-[#b8ced3] p-2.5 text-xs text-gray-900"
-                                  >
-                                    <p className="mb-1">
-                          <span className="mr-2 line-through text-red-700 font-medium">
-                            {item.original}
-                          </span>
-                                      <span className="font-bold text-[#0a4d68]">
-                            {item.replacement}
-                          </span>
-                                    </p>
-                                    {item.explanation && (
-                                        <p className="mb-2 text-gray-800">
-                                          {item.explanation}
-                                        </p>
-                                    )}
-                                    <button
-                                        onClick={() => handleAcceptGrammar(item)}
-                                        className="rounded bg-[#0a4d68] px-2.5 py-1 font-medium text-white"
-                                    >
-                                      Accept
-                                    </button>
-                                  </div>
-                              ))
-                          ))}
-
-                      {!loading &&
-                          activeMode === "generate" &&
-                          storyIdeas.map((idea, index) => (
+                    {activeMode === "generate" && (
+                      <div className="flex-1 space-y-2 overflow-y-auto text-gray-900">
+                        {loading && <p className="text-xs font-medium text-gray-900">Loading...</p>}
+                        {!loading && storyIdeas.map((idea, index) => (
                               <div
                                   key={index}
                                   className="rounded border border-gray-500 bg-[#e3dff0] p-2.5 text-xs font-medium text-gray-900"
                               >
                                 {idea}
                               </div>
-                          ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </>
               ) : (
                   <div className="space-y-2 rounded border border-gray-500 bg-[#b8ced3] p-3 text-xs text-gray-900">
