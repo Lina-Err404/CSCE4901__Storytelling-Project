@@ -52,6 +52,11 @@ export function validateBreakoutRooms(
       };
     }
 
+    // Existing Supabase schema requires UUID room IDs.
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(room.roomId)) {
+      return { valid: false, error: "Breakout room IDs must be UUIDs." };
+    }
+
     // Room IDs must be unique.
     if (seenRoomIds.has(room.roomId)) {
       return {

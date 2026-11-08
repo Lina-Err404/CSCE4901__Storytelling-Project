@@ -1,227 +1,147 @@
 const express = require('express');
 const multer = require('multer');
 const { parse } = require('csv-parse/sync');
-
-const STUDENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
-const MAX_FILE_SIZE = 1024 * 1024;
-const MAX_ROWS = 500;
-const BATCH_SIZE = 400;
-
-function cleanDisplayName(value) {
-  if (typeof value !== 'string') {
-    return null;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1024 * 1024 } });
+function check(error) { if (error) throw error; }
+function cleanName(input) {
+  const name = typeof input === 'string' ? input.trim() : '';
+  return name.length >= 1 && name.length <= 50 ? name : null;
+}
+async function userDirectory(db) {
+  // Existing class_students.student_id is an Auth UUID. CSV school IDs are not stored;
+  // rows must resolve to a registered Supabase Auth account (by UUID or email).
+  const byId = new Map();
+  const byEmail = new Map();
+  for (let page = 1; page <= 100; page++) {
+    const { data, error } = await db.auth.admin.listUsers({ page, perPage: 1000 });
+    check(error);
+    const users = data.users || [];
+    users.forEach((user) => {
+      byId.set(user.id.toLowerCase(), user);
+      if (user.email) byEmail.set(user.email.toLowerCase(), user);
+    });
+    if (users.length < 1000) break;
   }
-
-  const displayName = value.trim();
-  return displayName.length >= 1 && displayName.length <= 50 ? displayName : null;
+  return { byId, byEmail };
 }
-
-function validStudentId(value) {
-  return typeof value === 'string' && STUDENT_ID_PATTERN.test(value);
+async function withNames(db, ids) {
+  if (!ids.length) return [];
+  const { data, error } = await db.from('profiles').select('id,display_name').in('id', ids);
+  check(error);
+  const names = new Map((data || []).map((p) => [p.id, p.display_name]));
+  return ids.map((id) => ({ studentId: id, displayName: names.get(id) || 'Student' }));
 }
-
-function createClassesRouter({ db, admin, requireTeacher, getIo }) {
+function createClassesRouter({ db, requireTeacher, getIo }) {
   const router = express.Router();
-  const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: MAX_FILE_SIZE },
-  });
-
   async function requireClassOwner(req, res, next) {
     try {
-      const classRef = db.collection('classes').doc(req.params.id);
-      const classSnapshot = await classRef.get();
-      if (!classSnapshot.exists || classSnapshot.data().teacherId !== req.user.uid) {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
-
-      req.classRef = classRef;
-      req.classData = classSnapshot.data();
-      return next();
-    } catch (error) {
-      return next(error);
-    }
+      const { data, error } = await db.from('classes').select('class_id,teacher_id')
+        .eq('class_id', req.params.id).maybeSingle();
+      check(error);
+      if (!data || data.teacher_id !== req.user.uid) return res.status(403).json({ error: 'Forbidden' });
+      req.schoolClass = data;
+      next();
+    } catch (error) { next(error); }
   }
-
-  function receiveRosterFile(req, res, next) {
-    upload.single('file')(req, res, (error) => {
-      if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
-        return res.status(413).json({ error: 'File too large' });
-      }
-      if (error) {
-        return res.status(400).json({ error: 'Invalid upload' });
-      }
-      return next();
-    });
-  }
-
+  const receiveRoster = (req, res, next) => upload.single('file')(req, res, (error) => {
+    if (error) return res.status(error.code === 'LIMIT_FILE_SIZE' ? 413 : 400)
+      .json({ error: error.code === 'LIMIT_FILE_SIZE' ? 'File too large' : 'Invalid upload' });
+    next();
+  });
   router.post('/classes', requireTeacher, async (req, res) => {
     const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
-    if (name.length < 1 || name.length > 80) {
-      return res.status(400).json({ error: 'Name must be 1-80 characters' });
-    }
-
-    const classRef = await db.collection('classes').add({
-      teacherId: req.user.uid,
-      studentIds: [],
-      name,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-    return res.status(201).json({ classId: classRef.id, name });
+    if (name.length < 1 || name.length > 80) return res.status(400).json({ error: 'Name must be 1-80 characters' });
+    const { data, error } = await db.from('classes').insert({ teacher_id: req.user.uid, class_name: name })
+      .select('class_id,class_name').single();
+    check(error);
+    return res.status(201).json({ classId: data.class_id, name: data.class_name });
   });
-
-  router.get('/classes', requireTeacher, async (req, res) => {
-    const snapshot = await db.collection('classes').where('teacherId', '==', req.user.uid).get();
-    return res.json({
-      classes: snapshot.docs.map((doc) => ({ classId: doc.id, ...doc.data() })),
-    });
+  router.get('/classes', requireTeacher, async (_req, res) => {
+    const { data, error } = await db.from('classes').select('class_id,class_name')
+      .eq('teacher_id', _req.user.uid).order('class_name');
+    check(error);
+    return res.json({ classes: (data || []).map((c) => ({ classId: c.class_id, name: c.class_name })) });
   });
-
-  router.post('/classes/:id/roster', requireTeacher, requireClassOwner, receiveRosterFile, async (req, res) => {
-    if (!req.file) {
-      return res.status(400).json({ error: 'CSV file is required' });
-    }
-
+  router.post('/classes/:id/roster', requireTeacher, requireClassOwner, receiveRoster, async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'CSV file is required' });
     let records;
-    try {
-      records = parse(req.file.buffer, {
-        bom: true,
-        skip_empty_lines: true,
-        relax_column_count: false,
-      });
-    } catch (error) {
-      return res.status(400).json({ error: 'Invalid CSV' });
-    }
-
+    try { records = parse(req.file.buffer, { bom: true, skip_empty_lines: true, relax_column_count: false }); }
+    catch { return res.status(400).json({ error: 'Invalid CSV' }); }
     const header = records[0]?.map((field) => String(field).trim().toLowerCase());
-    if (!header || header.length !== 2 || header[0] !== 'studentid' || header[1] !== 'name') {
-      return res.status(400).json({ error: 'CSV header must be studentId,name' });
+    if (!header || header[0] !== 'studentid' || header[1] !== 'name' ||
+      !(header.length === 2 || (header.length === 3 && header[2] === 'email'))) {
+      return res.status(400).json({ error: 'Expected studentId,name[,email]' });
     }
-
     const rows = records.slice(1);
-    if (rows.length > MAX_ROWS) {
-      return res.status(400).json({ error: 'Maximum 500 rows' });
-    }
-
-    const seenIds = new Set();
+    if (rows.length > 500) return res.status(400).json({ error: 'Maximum 500 rows' });
+    const { byId, byEmail } = await userDirectory(db);
+    const seen = new Set();
     const accepted = [];
     const rejected = [];
-
-    rows.forEach((record, index) => {
-      const row = index + 2;
-      const studentId = record[0];
-      const displayName = cleanDisplayName(record[1]);
-
-      if (!validStudentId(studentId)) {
-        rejected.push({ row, reason: 'Invalid studentId' });
-        return;
-      }
-      if (seenIds.has(studentId)) {
-        rejected.push({ row, reason: 'Duplicate studentId' });
-        return;
-      }
-      seenIds.add(studentId);
-
-      if (!displayName) {
-        rejected.push({ row, reason: 'Name must be 1-50 characters' });
-        return;
-      }
-      accepted.push({ studentId, displayName });
-    });
-
-    for (let offset = 0; offset < accepted.length; offset += BATCH_SIZE) {
-      const batch = db.batch();
-      const batchRows = accepted.slice(offset, offset + BATCH_SIZE);
-      batchRows.forEach(({ studentId, displayName }) => {
-        const studentRef = req.classRef.collection('roster').doc(studentId);
-        batch.set(studentRef, { displayName }, { merge: true });
-      });
-      if (batchRows.length > 0) {
-        batch.update(req.classRef, {
-          studentIds: admin.firestore.FieldValue.arrayUnion(...batchRows.map(({ studentId }) => studentId)),
-        });
-      }
-      await batch.commit();
+    for (let i = 0; i < rows.length; i++) {
+      const [rawId, rawName, rawEmail] = rows[i];
+      const studentId = String(rawId || '').trim();
+      const displayName = cleanName(rawName);
+      const email = String(rawEmail || '').trim().toLowerCase();
+      const user = (UUID.test(studentId) && byId.get(studentId.toLowerCase())) || (email && byEmail.get(email));
+      const reason = !displayName ? 'Invalid name (1-50 characters)' :
+        !user ? 'Student must register in Supabase Auth first; supply Auth UUID or registered email' :
+        seen.has(user.id) ? 'Duplicate student' : null;
+      if (reason) { rejected.push({ row: i + 2, reason }); continue; }
+      seen.add(user.id);
+      accepted.push({ id: user.id, name: displayName });
     }
-
+    for (const user of accepted) {
+      // Preserve any existing profile role/name; create only when absent.
+      const { error: profileError } = await db.from('profiles').upsert(
+        { id: user.id, display_name: user.name, role: 'student' },
+        { onConflict: 'id', ignoreDuplicates: true });
+      check(profileError);
+    }
+    for (let i = 0; i < accepted.length; i += 200) {
+      const chunk = accepted.slice(i, i + 200).map((student) =>
+        ({ class_id: req.params.id, student_id: student.id }));
+      const { error } = await db.from('class_students').upsert(chunk,
+        { onConflict: 'class_id,student_id', ignoreDuplicates: true });
+      check(error);
+    }
     return res.json({ imported: accepted.length, rejected });
   });
-
   router.put('/classes/:id/roster/:studentId', requireTeacher, requireClassOwner, async (req, res) => {
-    const { studentId } = req.params;
-    if (!validStudentId(studentId)) {
-      return res.status(400).json({ error: 'Invalid studentId' });
-    }
-
-    const displayName = cleanDisplayName(req.body?.name);
-    if (!displayName) {
-      return res.status(400).json({ error: 'Name must be 1-50 characters' });
-    }
-
-    const batch = db.batch();
-    batch.set(req.classRef.collection('roster').doc(studentId), { displayName });
-    batch.update(req.classRef, {
-      studentIds: admin.firestore.FieldValue.arrayUnion(studentId),
-    });
-    await batch.commit();
+    const studentId = req.params.studentId;
+    const displayName = cleanName(req.body?.name);
+    if (!UUID.test(studentId) || !displayName) return res.status(400).json({ error: 'Invalid studentId or name' });
+    const { data: membership, error: memberError } = await db.from('class_students')
+      .select('student_id').eq('class_id', req.params.id).eq('student_id', studentId).maybeSingle();
+    check(memberError);
+    if (!membership) return res.status(404).json({ error: 'Student not in this class' });
+    const { error } = await db.from('profiles').update({ display_name: displayName }).eq('id', studentId);
+    check(error);
     return res.json({ studentId, displayName });
   });
-
   router.get('/classes/:id/roster', requireTeacher, requireClassOwner, async (req, res) => {
-    const snapshot = await req.classRef.collection('roster').get();
-    return res.json({
-      students: snapshot.docs.map((doc) => ({ studentId: doc.id, ...doc.data() })),
-    });
+    const { data, error } = await db.from('class_students').select('student_id').eq('class_id', req.params.id);
+    check(error);
+    const students = await withNames(db, (data || []).map((s) => s.student_id));
+    students.sort((a,b) => a.displayName.localeCompare(b.displayName));
+    return res.json({ students });
   });
-
   router.delete('/classes/:id/roster/:studentId', requireTeacher, requireClassOwner, async (req, res) => {
-    const { studentId } = req.params;
-    if (!validStudentId(studentId)) {
-      return res.status(400).json({ error: 'Invalid studentId' });
-    }
-
-    const rosterRef = req.classRef.collection('roster').doc(studentId);
-
-    const activeLobbyId = await db.runTransaction(async (transaction) => {
-      const classSnapshot = await transaction.get(req.classRef);
-      const rosterSnapshot = await transaction.get(rosterRef);
-      if (!classSnapshot.exists || !rosterSnapshot.exists) return null;
-
-      const currentLobbyId = classSnapshot.data().activeLobbyId;
-      if (typeof currentLobbyId === 'string') {
-        const lobbyRef = db.collection('lobbies').doc(currentLobbyId);
-        const lobbySnapshot = await transaction.get(lobbyRef);
-        if (lobbySnapshot.exists && ['open', 'locked'].includes(lobbySnapshot.data().status)) {
-          const seatRef = lobbyRef.collection('students').doc(studentId);
-          const seatSnapshot = await transaction.get(seatRef);
-          if (seatSnapshot.exists) {
-            transaction.update(seatRef, { kicked: true });
-            transaction.delete(rosterRef);
-            transaction.update(req.classRef, {
-              studentIds: admin.firestore.FieldValue.arrayRemove(studentId),
-            });
-            return currentLobbyId;
-          }
-        }
-      }
-
-      transaction.delete(rosterRef);
-      transaction.update(req.classRef, {
-        studentIds: admin.firestore.FieldValue.arrayRemove(studentId),
-      });
-      return null;
+    const studentId = req.params.studentId;
+    if (!UUID.test(studentId)) return res.status(400).json({ error: 'Invalid studentId' });
+    const { data: lobbyId, error } = await db.rpc('r12_remove_roster_student', {
+      p_class_id: req.params.id, p_teacher_id: req.user.uid, p_student_id: studentId,
     });
-
-    const io = typeof getIo === 'function' ? getIo() : undefined;
-    if (io && activeLobbyId) {
-      const sockets = await io.in(`lobby:${activeLobbyId}`).fetchSockets();
-      const matchingSockets = sockets.filter((socket) => socket.data.studentId === studentId);
-      await Promise.all(matchingSockets.map((socket) => socket.disconnect(true)));
+    check(error);
+    const io = getIo?.();
+    if (io && lobbyId) {
+      const sockets = await io.in(`lobby:${lobbyId}`).fetchSockets();
+      await Promise.all(sockets.filter((socket) => socket.data.studentId === studentId)
+        .map((socket) => socket.disconnect(true)));
     }
     return res.json({ deleted: true });
   });
-
   return router;
 }
-
 module.exports = { createClassesRouter };

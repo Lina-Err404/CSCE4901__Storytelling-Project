@@ -26,12 +26,12 @@ describe("breakout room assignments", () => {
 
     const result = replaceBreakoutRooms(lobby, "teacher1", [
       {
-        roomId: "group1",
+        roomId: "11111111-1111-4111-8111-111111111111",
         roomName: "Group 1",
         studentIds: ["student1", "student2"],
       },
       {
-        roomId: "group2",
+        roomId: "22222222-2222-4222-8222-222222222222",
         roomName: "Group 2",
         studentIds: ["student3", "student4"],
       },
@@ -46,7 +46,7 @@ describe("breakout room assignments", () => {
 
     const result = validateBreakoutRooms(lobby, "wrongTeacher", [
       {
-        roomId: "group1",
+        roomId: "11111111-1111-4111-8111-111111111111",
         roomName: "Group 1",
         studentIds: ["student1", "student2"],
       },
@@ -60,7 +60,7 @@ describe("breakout room assignments", () => {
 
     const result = validateBreakoutRooms(lobby, "teacher1", [
       {
-        roomId: "group1",
+        roomId: "11111111-1111-4111-8111-111111111111",
         roomName: "Group 1",
         studentIds: ["student1", "student99"],
       },
@@ -74,12 +74,12 @@ describe("breakout room assignments", () => {
 
     const result = validateBreakoutRooms(lobby, "teacher1", [
       {
-        roomId: "group1",
+        roomId: "11111111-1111-4111-8111-111111111111",
         roomName: "Group 1",
         studentIds: ["student1", "student2"],
       },
       {
-        roomId: "group2",
+        roomId: "22222222-2222-4222-8222-222222222222",
         roomName: "Group 2",
         studentIds: ["student1", "student3"],
       },
@@ -93,7 +93,7 @@ describe("breakout room assignments", () => {
 
     const result = validateBreakoutRooms(lobby, "teacher1", [
       {
-        roomId: "group1",
+        roomId: "11111111-1111-4111-8111-111111111111",
         roomName: "Group 1",
         studentIds: ["student1"],
       },
@@ -107,7 +107,7 @@ describe("breakout room assignments", () => {
 
     const result = replaceBreakoutRooms(lobby, "teacher1", [
       {
-        roomId: "group1",
+        roomId: "11111111-1111-4111-8111-111111111111",
         roomName: "Group 1",
         studentIds: ["student1", "student2"],
       },

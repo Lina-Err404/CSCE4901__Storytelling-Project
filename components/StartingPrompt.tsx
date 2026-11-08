@@ -1,4 +1,5 @@
-'use client'; // tells next.js this is a client-side component so our states actually work
+'use client';
+import { getAccessToken } from "@/app/supabase-client";
 
 import React, { useState } from 'react';
 
@@ -23,7 +24,7 @@ const INPUT_STYLE: React.CSSProperties = {
   color: '#333'
 };
 
-export default function StartingPrompt() {
+export default function StartingPrompt({ lobbyId }: { lobbyId: string }) {
   // state vars to track the teacher's selections and loading status (camelCase per team rules)
   const [promptType, setPromptType] = useState('custom');
   const [promptText, setPromptText] = useState('');
@@ -43,9 +44,10 @@ export default function StartingPrompt() {
     setIsSubmitting(true);
 
     try {
-      setSubmitStatus('Assigning prompt to the classroom...');
+      setSubmitStatus('Saving prompt settings...');
       
       const payload = {
+        lobbyId,
         promptType,
         promptText: promptType === 'custom' ? promptText.trim() : '',
         assignmentType,
@@ -53,15 +55,14 @@ export default function StartingPrompt() {
 
       const response = await fetch("/api/starting-prompts", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${await getAccessToken()}` },
         body: JSON.stringify(payload),
       });
 
       const result = await response.json();
-      console.log("Backend response:", result); // TODO: remove before production
       
-      if (response.ok || response.status === 501) { 
-        setSubmitStatus('Prompt successfully assigned!');
+      if (response.ok) { 
+        setSubmitStatus('Starting prompt settings saved.');
       } else {
         setSubmitStatus('Error: ' + (result.error || 'Failed to save prompt.'));
       }
@@ -84,7 +85,7 @@ export default function StartingPrompt() {
         <label htmlFor="prompt-mode" style={LABEL_STYLE}>Prompt Mode</label>
         <select id="prompt-mode" value={promptType} onChange={(e) => setPromptType(e.target.value)} style={INPUT_STYLE}>
           <option value="custom">Write a Custom Prompt</option>
-          <option value="random">Pull a Random Prompt</option>
+          <option value="random">Random Prompt</option>
           <option value="none">No Prompt</option>
         </select>
       </div>

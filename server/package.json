@@ -8,24 +8,18 @@
   },
   "scripts": {
     "dev:api": "node src/server.js",
-    "dev:emulator": "firebase --config ../firebase.json emulators:start --only firestore,auth --project demo-storytelling",
-    "grant-teacher": "node src/grantTeacher.js",
-    "test": "firebase --config ../firebase.json emulators:exec --only firestore --project demo-storytelling \"jest --runInBand\""
+    "test": "node --test tests/supabase-helpers.test.js",
+    "grant-teacher": "node scripts/grant-teacher.js"
   },
   "dependencies": {
     "csv-parse": "^6.1.0",
     "dotenv": "^18.0.8",
     "express": "^5.1.0",
     "express-rate-limit": "^8.1.0",
-    "firebase-admin": "^13.4.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
-    "socket.io": "^4.8.1"
+    "socket.io": "^4.8.1",
+    "@supabase/supabase-js": "^2.57.0"
   },
-  "devDependencies": {
-    "firebase-tools": "^14.22.0",
-    "jest": "^30.2.0",
-    "socket.io-client": "^4.8.1",
-    "supertest": "^7.1.4"
-  }
+  "devDependencies": {}
 }

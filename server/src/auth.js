@@ -1,79 +1,25 @@
-function createFirebaseAuthMiddleware({ admin, requiredRole, allowedRoles }) {
-  const devBypassEnabled = process.env.NODE_ENV !== 'production' && (
-    process.env.ALLOW_DEV_MODE === 'true' ||
-    process.env.USE_AUTH_EMULATOR === 'true'
-  );
-
+function createAuthMiddleware({ verifier, db, requiredRole }) {
   return async function authenticate(req, res, next) {
-    const authorization = req.get('authorization');
-    const match = typeof authorization === 'string'
-      ? authorization.match(/^Bearer\s+([^\s]+)$/i)
-      : null;
-
-    if (devBypassEnabled) {
-      const devTeacherId = req.get('x-teacher-id');
-      const devStudentId = req.get('x-test-student-uid');
-      const devUid = devTeacherId || devStudentId;
-      if (typeof devUid === 'string' && devUid.length > 0) {
-        const role = requiredRole || (allowedRoles && allowedRoles.includes('student') ? 'student' : 'teacher');
-        req.user = { uid: devUid, role };
-        return next();
-      }
-    }
-
-    if (!match) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    let claims;
+    const match = req.get('authorization')?.match(/^Bearer\s+(\S+)$/i);
+    if (!match) return res.status(401).json({ error: 'Unauthorized' });
     try {
-      claims = await admin.auth().verifyIdToken(match[1]);
-    } catch {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    if (typeof claims.uid !== 'string' || claims.uid.length === 0) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-    if (requiredRole && claims.role !== requiredRole) {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
-    if (allowedRoles && !allowedRoles.includes(claims.role)) {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
-
-    req.user = { uid: claims.uid, role: claims.role || null };
-    return next();
+      const { data, error } = await verifier.auth.getUser(match[1]);
+      if (error || !data.user) return res.status(401).json({ error: 'Unauthorized' });
+      // Authoritative roles live in this project's existing profiles table.
+      const { data: profile, error: profileError } = await db.from('profiles')
+        .select('role').eq('id', data.user.id).maybeSingle();
+      if (profileError) throw profileError;
+      const role = profile?.role === 'teacher' ? 'teacher' : 'student';
+      if (requiredRole && role !== requiredRole) return res.status(403).json({ error: 'Forbidden' });
+      req.user = { uid: data.user.id, email: data.user.email || '', role };
+      next();
+    } catch (error) { next(error); }
   };
 }
-
-function createRequireTeacher(admin) {
-  return createFirebaseAuthMiddleware({ admin, requiredRole: 'teacher' });
+function createRequireTeacher(verifier, db) {
+  return createAuthMiddleware({ verifier, db, requiredRole: 'teacher' });
 }
-
-function createRequireStudent(admin) {
-  return createFirebaseAuthMiddleware({ admin, allowedRoles: [undefined, 'student'] });
+function createRequireStudent(verifier, db) {
+  return createAuthMiddleware({ verifier, db });
 }
-
-function createFirebaseSocketAuth(admin) {
-  return async function verifySocketToken(socket, next) {
-    const token = socket.handshake.auth?.token;
-    if (typeof token !== 'string' || token.length === 0) {
-      return next(new Error('unauthorized'));
-    }
-
-    try {
-      const claims = await admin.auth().verifyIdToken(token);
-      if (typeof claims.uid !== 'string' || claims.uid.length === 0) {
-        return next(new Error('unauthorized'));
-      }
-      socket.data.uid = claims.uid;
-      socket.data.role = claims.role || null;
-      return next();
-    } catch {
-      return next(new Error('unauthorized'));
-    }
-  };
-}
-
-module.exports = { createFirebaseSocketAuth, createRequireStudent, createRequireTeacher };
+module.exports = { createRequireTeacher, createRequireStudent };

@@ -1,4 +1,5 @@
 "use client";
+import { getAccessToken } from "@/app/supabase-client";
 import { BreakoutRoom, Lobby } from "@/lib/breakoutRooms";
 import { useState, useEffect } from "react";
 import Link from 'next/link';
@@ -13,7 +14,6 @@ export default function BreakoutManager({ lobby }: {lobby: Lobby}) {
     const [ dirty, setDirty] = useState(false);
 
 
-    //once db is configured change to '/api/lobbies/${lobbyId}/breakout-rooms or something similar
     const url = `/api/lobbies/${encodeURIComponent(lobby.lobbyId)}/breakout-rooms`;
     
     
@@ -21,7 +21,7 @@ export default function BreakoutManager({ lobby }: {lobby: Lobby}) {
     useEffect(() => {
         let cancelled = false;
 
-        fetch(url)
+        getAccessToken().then((token) => fetch(url, { headers: { Authorization: `Bearer ${token}` } }))
         .then(async (res) => {
             const data = await res.json();
             if(!res.ok || data.success === false) {
@@ -64,9 +64,8 @@ export default function BreakoutManager({ lobby }: {lobby: Lobby}) {
         try {
             const res = await fetch(url, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${await getAccessToken()}` },
                 body: JSON.stringify({
-                    teacherId: lobby.teacherId,
                     rooms
                 }), 
             });

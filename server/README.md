@@ -1,27 +1,11 @@
-# Storytelling Server Modules
+# R12 Express API and Socket.IO
 
-The API uses Firebase Admin only. `src/firebase.js` loads the repository-root `.env` with dotenv and initializes Application Default Credentials using `GOOGLE_APPLICATION_CREDENTIALS`.
+This server implements the **original R12** class roster, lobby creation/joining, student monitoring, and lobby status features. It uses Supabase Auth and the team's existing tables (`profiles`, `classes`, `class_students`, `lobbies`, `lobby_participants`, `breakout_rooms`, `breakout_participants`). No Firebase emulator is used.
 
-## Wiring
+Set the variables described in the root README in the root `.env`. Start both servers with `npm run dev` from the repository root, or run `npm run dev:api` from the `server` directory.
 
-The R13 API is mounted at `/api` by `src/server.js`:
+HTTP routes live behind Next.js `/api/backend/*` (rewrite to `http://127.0.0.1:4000/*`). `GET http://localhost:4000/health` checks the Express process. The separate Next.js routes handle starting prompts, breakout assignments, and account roles.
 
-```js
-POST /api/lobbies                  { "classId": "..." }
-POST /api/lobbies/:code/join       Authorization: Bearer <Firebase ID token>
-```
+Authorization checks the user's Supabase Auth access token and the authoritative `public.profiles.role` column. Only trusted administrators should run `node server/scripts/grant-teacher.js <AUTH_USER_UUID>` from the repository root; the script requires the server-only service key.
 
-Both endpoints verify Firebase ID tokens; host creation additionally requires the `role: "teacher"` custom claim. Assign that claim to a provisioned account with `npm run grant-teacher -- <FIREBASE_UID>` from this directory. The Firebase Auth emulator is used during local development; no credentials are logged.
-
-Run the API with `npm run dev:api` and the Firestore tests with `npm test` from this directory. The root `npm run dev` starts the app and emulators with local Firestore import/export persistence under the ignored `.firebase-data/` directory. To print scratch-case results against your configured Firebase project or emulator, run `node scratch.js`; that file is git-ignored and removes its temporary records.
-
-## Data Model
-
-- `classes/{classId}` retains existing class fields and has `studentIds` for roster enrollment.
-- `classes/{classId}/roster/{studentId}` remains the current roster display-name source.
-- `Lobbies/{code}` uses the required case-sensitive collection and stores the lobby's existing fields plus `hostId`, `classId`, `participantIds`, and `createdAt`.
-
-## Known Gaps
-
-- The root `firestore.rules` denies direct client reads and writes; service access is through the Admin-backed API.
-- Existing lowercase lobby modules remain for the earlier prototype; the R13 route is mounted from `lobbyRoutes.js` and uses `Lobbies/{code}`.
+See `../supabase/migrations/202611070003_r12_only_existing_schema_bridge.sql` for the existing-schema SQL functions used by the R12 feature. **Review constraints and apply only to a development database first.**

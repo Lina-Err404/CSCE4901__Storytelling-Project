@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import type { User } from "firebase/auth";
+import type { User } from "@supabase/supabase-js";
 import { CoverBook, CoverFrame } from "@/components/auth/CoverArtwork";
-import { logIn, signUp } from "@/app/Login_Signup_Backend/authServiceFB";
-import { authConfigurationMissing } from "./firebase-client";
+import { logIn, signUp } from "@/app/Login_Signup_Backend/authServiceSupabase";
+import { authConfigurationMissing, getCurrentRole, supabase } from "./supabase-client";
 
 type AuthView =
   | "roleSelection"
@@ -76,10 +76,19 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
     try {
       if (view === "teacherSignup") {
         const user = await signUp(email, password, firstName, lastName);
+        if ((await getCurrentRole()) !== "teacher") {
+          await supabase?.auth.signOut();
+          setSubmissionNotice("Account created. Ask an administrator to grant teacher access, then sign in.");
+          return;
+        }
         setSubmissionNotice("Account created.");
         onAuthenticated?.(user, "teacher");
       } else if (view === "teacherLogin") {
         const user = await logIn(email, password);
+        if ((await getCurrentRole()) !== "teacher") {
+          await supabase?.auth.signOut();
+          throw new Error("This account does not have teacher access. Contact your administrator.");
+        }
         setSubmissionNotice("Logged in.");
         onAuthenticated?.(user, "teacher");
       } else if (view === "studentLogin") {
@@ -238,7 +247,7 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
               <p id="login-note" className="form-note" role="status">
                 {submissionNotice ||
                   (authConfigurationMissing
-                    ? "Set the public Firebase configuration before signing in."
+                    ? "Set the public Supabase configuration before signing in."
                     : "Sign in with your teacher account to open the host lobby.")}
               </p>
             </form>
@@ -354,7 +363,7 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
               <p id="signup-note" className="form-note" role="status">
                 {submissionNotice ||
                   (authConfigurationMissing
-                    ? "Set the public Firebase configuration before creating an account."
+                    ? "Set the public Supabase configuration before creating an account."
                     : "Create your teacher account to host classroom lobbies.")}
               </p>
             </form>

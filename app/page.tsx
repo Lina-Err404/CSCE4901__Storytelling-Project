@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
-import { onAuthStateChanged, signOut, type User } from "firebase/auth";
+import type { User } from "@supabase/supabase-js";
 import { AuthScreen } from "./auth-screen";
-import { auth, authConfigurationMissing } from "./firebase-client";
+import { supabase, getAccessToken, getCurrentRole, authConfigurationMissing } from "./supabase-client";
 import { StudentLobby } from "./student-lobby";
 import StartingPrompt from "@/components/StartingPrompt";
 
 type Student = { studentId: string; displayName: string };
+type JoinedStudent = { studentId: string; rosterStudentId: string; displayName: string };
 type SchoolClass = { classId: string; name: string };
 type Lobby = {
   lobbyId: string;
@@ -17,30 +18,13 @@ type Lobby = {
 
 async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
-  const currentUser = auth?.currentUser;
-  const isDevBypass =
-    process.env.NODE_ENV !== "production" &&
-    (process.env.NEXT_PUBLIC_ALLOW_DEV_MODE === "true" ||
-      process.env.NEXT_PUBLIC_USE_AUTH_EMULATOR === "true");
-
-  if (!currentUser) {
-    if (isDevBypass) {
-      headers.set("x-teacher-id", "local-dev-teacher");
-    } else {
-      throw new Error("Sign in is required.");
-    }
-  } else {
-    headers.set("Authorization", `Bearer ${await currentUser.getIdToken()}`);
-    if (isDevBypass) {
-      headers.set("x-teacher-id", currentUser.uid);
-    }
-  }
+  headers.set("Authorization", `Bearer ${await getAccessToken()}`);
 
   if (options.body && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(`/api${path}`, { ...options, headers });
+  const response = await fetch(`/api/backend${path}`, { ...options, headers });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(payload.error || `Request failed (${response.status})`);
@@ -49,26 +33,12 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export default function Home() {
-  const devMode =
-    process.env.NODE_ENV !== "production" &&
-    (process.env.NEXT_PUBLIC_ALLOW_DEV_MODE === "true" ||
-      process.env.NEXT_PUBLIC_USE_AUTH_EMULATOR === "true");
-  const [user, setUser] = useState<User | null>(() =>
-    devMode ? ({ uid: "local-dev-teacher" } as User) : null,
+  const [user, setUser] = useState<User | null>(null);
+  const [userRole, setUserRole] = useState<"teacher" | null>(null);
+  const [authReady, setAuthReady] = useState(authConfigurationMissing);
+  const [authError, setAuthError] = useState(
+    authConfigurationMissing ? "Supabase is not configured for this app." : "",
   );
-  const [userRole, setUserRole] = useState<"teacher" | null>(() =>
-    devMode ? "teacher" : null,
-  );
-  const [authReady, setAuthReady] = useState(
-    devMode || !auth || authConfigurationMissing,
-  );
-  const [authError, setAuthError] = useState(() => {
-    if (devMode) return "Local dev mode enabled. Opening the host lobby.";
-    if (!auth || authConfigurationMissing) {
-      return "Firebase auth is not configured for this app.";
-    }
-    return "";
-  });
   const [activeTab, setActiveTab] = useState("Class Lobby");
   const [copied, setCopied] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -76,7 +46,7 @@ export default function Home() {
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [newClassName, setNewClassName] = useState("");
   const [students, setStudents] = useState<Student[]>([]);
-  const [joinedIds, setJoinedIds] = useState<string[]>([]);
+  const [joinedStudents, setJoinedStudents] = useState<JoinedStudent[]>([]);
   const [lobby, setLobby] = useState<Lobby | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -84,43 +54,50 @@ export default function Home() {
   const isTeacher = userRole === "teacher";
 
   const lobbyCode = lobby?.joinCode || "------";
-  const joinedCount = joinedIds.length;
+  const joinedCount = joinedStudents.length;
+  const joinedByRoster = new Map(joinedStudents.map((student) => [student.rosterStudentId, student.studentId]));
   const started = lobby?.status === "locked";
 
   useEffect(() => {
-    if (devMode || !auth || authConfigurationMissing) {
-      return;
-    }
+    if (!supabase) return;
     let current = true;
-    const unsubscribe = onAuthStateChanged(auth, async (nextUser) => {
+    const applyUser = async (nextUser: User | null) => {
+      if (!current) return;
       setUser(nextUser);
-      if (!nextUser) {
-        setUserRole(null);
-        setStudents([]);
-        setJoinedIds([]);
-        setLobby(null);
-      }
-      setAuthError("");
       if (nextUser) {
         try {
-          const token = await nextUser.getIdTokenResult();
-          if (current && token.claims.role === "teacher") {
-            setUserRole("teacher");
-          }
+          const role = await getCurrentRole();
+          if (!current) return;
+          setUserRole(role === "teacher" ? "teacher" : null);
         } catch {
-          if (current) {
-            setAuthError("Could not verify your account role. Sign in again.");
-          }
+          if (!current) return;
+          setUserRole(null);
+          setAuthError("Could not load account permissions.");
         }
+      } else {
+        setUserRole(null);
       }
-      if (current) setAuthReady(true);
+      if (!nextUser) {
+        setStudents([]);
+        setJoinedStudents([]);
+        setLobby(null);
+      }
+      setAuthReady(true);
+    };
+    void supabase.auth.getUser().then(({ data, error }) => {
+      if (error && error.name !== "AuthSessionMissingError" && current) {
+        setAuthError("Could not restore your session. Sign in again.");
+      }
+      void applyUser(data.user || null);
     });
-
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      window.setTimeout(() => { void applyUser(session?.user || null); }, 0);
+    });
     return () => {
       current = false;
-      unsubscribe();
+      listener.subscription.unsubscribe();
     };
-  }, [devMode]);
+  }, []);
 
   useEffect(() => {
     if (!user || !isTeacher) return;
@@ -139,7 +116,7 @@ export default function Home() {
             : nextClassId;
           if (!resolved) {
             setStudents([]);
-            setJoinedIds([]);
+            setJoinedStudents([]);
             setLobby(null);
           }
           return resolved;
@@ -184,16 +161,14 @@ export default function Home() {
         const currentLobby = lobbies.lobbies[0] || null;
         setLobby(currentLobby);
         if (currentLobby) {
-          const participation = await api<{ students: Student[] }>(
+          const participation = await api<{ students: JoinedStudent[] }>(
             `/lobbies/${currentLobby.lobbyId}/students`,
           );
           if (!cancelled) {
-            setJoinedIds(
-              participation.students.map((student) => student.studentId),
-            );
+            setJoinedStudents(participation.students);
           }
         } else {
-          setJoinedIds([]);
+          setJoinedStudents([]);
         }
       } catch (reason) {
         if (!cancelled) {
@@ -217,10 +192,10 @@ export default function Home() {
 
     const refreshParticipation = async () => {
       try {
-        const result = await api<{ students: Student[] }>(
+        const result = await api<{ students: JoinedStudent[] }>(
           `/lobbies/${lobby.lobbyId}/students`,
         );
-        setJoinedIds(result.students.map((student) => student.studentId));
+        setJoinedStudents(result.students);
       } catch (reason) {
         setError(
           reason instanceof Error
@@ -247,7 +222,7 @@ export default function Home() {
         },
       );
       setLobby({ ...created, status: "open" });
-      setJoinedIds([]);
+      setJoinedStudents([]);
     } catch (reason) {
       setError(
         reason instanceof Error ? reason.message : "Could not create a lobby.",
@@ -341,7 +316,7 @@ export default function Home() {
         body: JSON.stringify({ status: "closed" }),
       });
       setLobby(null);
-      setJoinedIds([]);
+      setJoinedStudents([]);
     } catch (reason) {
       setError(
         reason instanceof Error ? reason.message : "Could not close the lobby.",
@@ -362,7 +337,7 @@ export default function Home() {
           method: "DELETE",
         },
       );
-      setJoinedIds((current) => current.filter((id) => id !== studentId));
+      setJoinedStudents((current) => current.filter((seat) => seat.studentId !== studentId));
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -386,13 +361,11 @@ export default function Home() {
   }
 
   function handleSignOut() {
-    if (auth?.currentUser) {
-      void signOut(auth);
-    }
+    void supabase?.auth.signOut();
     setUser(null);
     setUserRole(null);
     setStudents([]);
-    setJoinedIds([]);
+    setJoinedStudents([]);
     setLobby(null);
   }
 
@@ -532,7 +505,9 @@ export default function Home() {
               </p>
             )}
             {activeTab === "Story Sections" ? (
-              <StartingPrompt />
+              <>{lobby ? <StartingPrompt lobbyId={lobby.lobbyId} /> : (
+                <p className="rounded-xl border border-slate-200 bg-white p-6">Create a lobby before assigning a starting prompt.</p>
+              )}</>
             ) : activeTab !== "Class Lobby" ? (
               <div className="rounded-2xl border border-slate-200 bg-white p-8">
                 <h2 className="text-xl font-bold">{activeTab}</h2>
@@ -666,6 +641,12 @@ export default function Home() {
                         </button>
                       </div>
 
+                      {lobby && (
+                        <a href={`/manually-assigned?lobbyId=${encodeURIComponent(lobby.lobbyId)}`}
+                           className="mt-3 block rounded-xl border border-indigo-200 px-4 py-3 text-center text-sm font-semibold text-indigo-700">
+                          Manage breakout rooms
+                        </a>
+                      )}
                       <div className="mt-5 rounded-xl bg-slate-50 p-4">
                         <p className="text-sm font-semibold text-slate-800">
                           Code-based access
@@ -742,19 +723,19 @@ export default function Home() {
                             </div>
                             <span
                               className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${
-                                joinedIds.includes(student.studentId)
+                                joinedByRoster.has(student.studentId)
                                   ? "bg-emerald-50 text-emerald-700"
                                   : "bg-slate-100 text-slate-500"
                               }`}
                             >
-                              {joinedIds.includes(student.studentId)
+                              {joinedByRoster.has(student.studentId)
                                 ? "Joined"
                                 : "Not joined"}
                             </span>
-                            {lobby && joinedIds.includes(student.studentId) && (
+                            {lobby && joinedByRoster.has(student.studentId) && (
                               <button
                                 onClick={() =>
-                                  void kickStudent(student.studentId)
+                                  void kickStudent(joinedByRoster.get(student.studentId)!)
                                 }
                                 disabled={busy}
                                 className="shrink-0 rounded-md border border-rose-200 px-2 py-1 text-xs font-semibold text-rose-700 disabled:opacity-50"

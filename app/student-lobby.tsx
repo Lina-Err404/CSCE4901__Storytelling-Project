@@ -1,17 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
-import { signOut, type User } from "firebase/auth";
+import type { User } from "@supabase/supabase-js";
 import { io, type Socket } from "socket.io-client";
 import Image from "next/image";
 import { Lexend } from "next/font/google";
-import { auth } from "./firebase-client";
+import { supabase, getAccessToken } from "./supabase-client";
 import styles from "./join/join.module.css";
 
 const lexend = Lexend({ subsets: ["latin"], weight: ["600", "800"] });
 const CODE_LENGTH = 6;
 
-type JoinResponse = { token: string; lobbyId: string; displayName: string };
+type JoinResponse = { token: string; lobbyId: string; displayName: string; status: string };
 
 export function StudentLobby({ user }: { user: User }) {
   const [chars, setChars] = useState<string[]>(Array(CODE_LENGTH).fill(""));
@@ -36,7 +36,7 @@ export function StudentLobby({ user }: { user: User }) {
   async function handleSignOut() {
     socketRef.current?.disconnect();
     socketRef.current = null;
-    if (auth) await signOut(auth);
+    await supabase?.auth.signOut();
   }
 
   // Tile input handling
@@ -80,8 +80,8 @@ export function StudentLobby({ user }: { user: User }) {
     setConnection("Connecting...");
 
     try {
-      const idToken = await user.getIdToken();
-      const response = await fetch("/api/lobbies/join", {
+      const idToken = await getAccessToken();
+      const response = await fetch("/api/backend/lobbies/join", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${idToken}`,
@@ -94,6 +94,7 @@ export function StudentLobby({ user }: { user: User }) {
 
       const result = payload as JoinResponse;
       setJoined(result);
+      setSessionStatus(result.status || "open");
       const socket = io(process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000", {
         auth: { token: result.token },
         transports: ["websocket"],
@@ -194,7 +195,7 @@ export function StudentLobby({ user }: { user: User }) {
 
         <section className="mt-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <p className="text-sm text-slate-600">Signed in as {user.email || "student"}</p>
-          <p className="mt-2 break-all font-mono text-xs text-slate-500">Student ID: {user.uid}</p>
+          <p className="mt-2 break-all font-mono text-xs text-slate-500">Student ID: {user.id}</p>
 
           <div className="mt-6 border-t border-slate-100 pt-5">
             <h2 className="text-xl font-bold">Welcome, {joined.displayName}</h2>
