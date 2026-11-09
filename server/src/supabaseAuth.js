@@ -1,3 +1,12 @@
+
+
+const { getSupabase } = require("./supabase");
+
+function requireSupabaseTeacher(req, res, next) {
+  const supabase = getSupabase();
+  return createRequireTeacher(supabase)(req, res, next);
+}
+
 const VALID_ROLES = new Set(['student', 'teacher']);
 
 function getDisplayName(user) {
@@ -87,6 +96,7 @@ function createRequireStudent(supabase) {
 }
 
 module.exports = {
+  requireSupabaseTeacher,
   createRequireStudent,
   createRequireTeacher,
   createRequireUser,
