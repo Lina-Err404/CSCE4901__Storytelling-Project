@@ -96,6 +96,31 @@ export function documentToJSON(doc) {
     }
 }
 
+// Packs a drawing into one short string
+const PACK_TAG = "gz1:"
+
+async function streamBytes(bytes, stream) {
+    const writer = stream.writable.getWriter()
+    writer.write(bytes)
+    writer.close()
+    return new Uint8Array(await new Response(stream.readable).arrayBuffer())
+}
+
+export async function packDrawing(json) {
+    if (typeof CompressionStream === "undefined") return json // store it the long way if can't compress
+    const bytes = await streamBytes(new TextEncoder().encode(JSON.stringify(json)), new CompressionStream("gzip"))
+    let bin = ""
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+    return PACK_TAG + btoa(bin)
+}
+
+export async function unpackDrawing(raw) {
+    if (typeof raw !== "string" || !raw.startsWith(PACK_TAG)) return raw // old object format
+    const bin = atob(raw.slice(PACK_TAG.length))
+    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0))
+    return JSON.parse(new TextDecoder().decode(await streamBytes(bytes, new DecompressionStream("gzip"))))
+}
+
 export function documentFromJSON(raw) {
     if (raw == null) return emptyDocument()
     if (raw.version !== 1 && raw.version !== 2) throw new Error("Unsupported drawing document")
@@ -497,7 +522,7 @@ export async function saveDrawing(index, makeSegment) {
     const editor = getEditor(index)
     if (isSaved(index)) return true
     const snapshot = snapshotOf(editor) // what is being saved, in case the drawing changes while it uploads
-    const data = editor.toJSON()
+    const data = await packDrawing(editor.toJSON())
     let segmentId = await segmentIdFor(index)
     if (!segmentId && makeSegment) segmentId = persist.segmentIds[index] = await makeSegment()
     if (!segmentId) {
@@ -545,7 +570,10 @@ export async function loadDrawings() {
             continue // nothing new from this student
         }
         try {
-            editor.load(row.drawing_data)
+            const doc = await unpackDrawing(row.drawing_data)
+            // may have started drawing while this was unpacking
+            if (index === persist.myIndex && (editor.doc.strokes.length || editor.doc.fills.length || editor.canUndo)) continue
+            editor.load(doc)
             persist.saved[index] = snapshotOf(editor)
             persist.remote[index] = raw
         } catch (e) {
