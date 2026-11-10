@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState, useSyncExternalStore } from "react"
 import dynamic from "next/dynamic"
 import supabase from "@/src/utils/supabase"
+import { regionFromImage, subtractRegion, eraseFills, tidyFill } from "./fillTool"
 
 export const BRUSH_SIZES = [4, 7, 10, 13, 16]
 
@@ -40,6 +41,38 @@ const decodePoints = (d) => {
     return out
 }
 
+// a fill is saved as polygons
+const openRing = (ring) => {
+    const first = ring[0]
+    const last = ring[ring.length - 1]
+    return (first[0] === last[0] && first[1] === last[1] ? ring.slice(0, -1) : ring).flatMap(([x, y]) => [x, y])
+}
+
+const fillToJSON = (f) => ({
+    id: f.id,
+    color: f.color,
+    ...(f.opacity !== 1 && { opacity: f.opacity }),
+    polygons: f.poly.map((polygon) => polygon.map((ring) => encodePoints(openRing(ring)))),
+})
+
+const fillFromJSON = (f, unit) => {
+    if (!f || typeof f.id !== "string" || !Array.isArray(f.polygons)) return null
+    const readRing = (d) => {
+        if (!Array.isArray(d) || d.length < 6 || d.length % 2 !== 0 || !d.every(Number.isFinite)) return null
+        const flat = decodePoints(d).map((v) => (v * UNIT) / unit)
+        const ring = []
+        for (let i = 0; i < flat.length; i += 2) ring.push([flat[i], flat[i + 1]])
+        ring.push([flat[0], flat[1]])
+        return ring
+    }
+    const poly = f.polygons
+        .map((polygon) => (Array.isArray(polygon) ? polygon.map(readRing) : []))
+        .filter((rings) => rings[0])
+        .map(([outer, ...holes]) => [outer, ...holes.filter(Boolean)])
+    if (!poly.length) return null
+    return { id: f.id, color: typeof f.color === "string" ? f.color : "#000000", opacity: Math.min(1, Math.max(0, num(f.opacity, 1))), poly }
+}
+
 export function documentToJSON(doc) {
     return {
         version: 2,
@@ -59,7 +92,7 @@ export function documentToJSON(doc) {
             ...(s.cutStart && { cutStart: true }),
             ...(s.cutEnd && { cutEnd: true }),
         })),
-        ...(doc.fills.length && { fills: doc.fills }),
+        ...(doc.fills.length && { fills: doc.fills.map(fillToJSON) }),
     }
 }
 
@@ -79,9 +112,9 @@ export function documentFromJSON(raw) {
             opacity: Math.min(1, Math.max(0, num(s.opacity, 1))),
             lineCap: oneOf(s.lineCap, ["round", "butt", "square"]),
             lineJoin: oneOf(s.lineJoin, ["round", "bevel", "miter"]),
-            brush: oneOf(s.brush, ["pencil", "spray"]),
+            brush: oneOf(s.brush, ["pencil", "spray", "eraser"]),
         })),
-        fills: Array.isArray(raw.fills) ? raw.fills : [],
+        fills: raw.version === 2 && Array.isArray(raw.fills) ? raw.fills.map((f) => fillFromJSON(f, unit)).filter(Boolean) : [],
     }
 }
 
@@ -133,141 +166,36 @@ function boundsOf(pts) {
     return b
 }
 
-const range = (c0, c1, lo, hi) => {
-    if (Math.abs(c1) < 1e-12) return c0 >= lo && c0 <= hi ? [-Infinity, Infinity] : null
-    const a = (lo - c0) / c1
-    const b = (hi - c0) / c1
-    return a <= b ? [a, b] : [b, a]
+// check for if point sits on the stroke
+const covers = (s, x, y, slack) => {
+    const p = s.points
+    const reach = s.width / 2 + slack
+    const b = boundsOf(p)
+    if (x < b.minX - reach || x > b.maxX + reach || y < b.minY - reach || y > b.maxY + reach) return false
+    for (let i = 0; i < p.length - 2; i += 2) if (dist2(x, y, p[i], p[i + 1], p[i + 2], p[i + 3]) <= reach * reach) return true
+    return false
 }
 
-function circleRange(ax, ay, vx, vy, cx, cy, d) {
-    const vv = vx * vx + vy * vy
-    const wx = ax - cx
-    const wy = ay - cy
-    const c = wx * wx + wy * wy - d * d
-    if (vv < 1e-12) return c <= 0 ? [0, 1] : null
-    const b = vx * wx + vy * wy
-    const disc = b * b - vv * c
-    return disc < 0 ? null : [(-b - Math.sqrt(disc)) / vv, (-b + Math.sqrt(disc)) / vv]
-}
-
-const sweep = (...parts) => {
-    const hit = parts.filter(Boolean)
-    return hit.length ? [Math.min(...hit.map((p) => p[0])), Math.max(...hit.map((p) => p[1]))] : null
-}
-
-const both = (a, b) => (a && b && Math.max(a[0], b[0]) <= Math.min(a[1], b[1]) ? [Math.max(a[0], b[0]), Math.min(a[1], b[1])] : null)
-
-function reachRange(ax, ay, bx, by, e) {
-    const vx = bx - ax
-    const vy = by - ay
-    const len = Math.hypot(e.x1 - e.x0, e.y1 - e.y0)
-    const ux = len > 1e-9 ? (e.x1 - e.x0) / len : 0
-    const uy = len > 1e-9 ? (e.y1 - e.y0) / len : 0
-    const d = e.r + e.h
-    return sweep(
-        circleRange(ax, ay, vx, vy, e.x0, e.y0, d),
-        len > 1e-9 && circleRange(ax, ay, vx, vy, e.x1, e.y1, d),
-        len > 1e-9 && both(range((ax - e.x0) * ux + (ay - e.y0) * uy, vx * ux + vy * uy, 0, len), range((ax - e.x0) * uy - (ay - e.y0) * ux, vx * uy - vy * ux, -d, d))
-    )
-}
-
-function bandRange(ax, ay, bx, by, e) {
-    const vx = bx - ax
-    const vy = by - ay
-    const sl = Math.hypot(vx, vy)
-    const nx = (-vy / sl) * e.h
-    const ny = (vx / sl) * e.h
-    const P = [[e.x0 - nx, e.y0 - ny], [e.x0 + nx, e.y0 + ny], [e.x1 + nx, e.y1 + ny], [e.x1 - nx, e.y1 - ny]]
-    const parts = []
-    for (let i = 0; i < 4; i++) {
-        const [px, py] = P[i]
-        const [qx, qy] = P[(i + 1) % 4]
-        parts.push(circleRange(ax, ay, vx, vy, px, py, e.r))
-        const len = Math.hypot(qx - px, qy - py)
-        if (len > 1e-9) {
-            const ux = (qx - px) / len
-            const uy = (qy - py) / len
-            parts.push(both(range((ax - px) * ux + (ay - py) * uy, vx * ux + vy * uy, 0, len), range((ax - px) * uy - (ay - py) * ux, vx * uy - vy * ux, -e.r, e.r)))
-        }
+// index of the stroke you can see at (x, y)
+function visibleStrokeAt(strokes, x, y) {
+    const erasers = []
+    for (let i = strokes.length - 1; i >= 0; i--) {
+        const s = strokes[i]
+        if (s.brush === "eraser") erasers.push(s)
+        else if (covers(s, x, y, 0.5) && !erasers.some((e) => covers(e, x, y, 0))) return i
     }
-    const ex = P[3][0] - P[0][0]
-    const ey = P[3][1] - P[0][1]
-    const lx = P[1][0] - P[0][0]
-    const ly = P[1][1] - P[0][1]
-    const det = ex * ly - ey * lx
-    if (Math.abs(det) > 1e-9) {
-        const cx = ax - P[0][0]
-        const cy = ay - P[0][1]
-        parts.push(both(range((cx * ly - cy * lx) / det, (vx * ly - vy * lx) / det, 0, 1), range((ex * cy - ey * cx) / det, (ex * vy - ey * vx) / det, 0, 1)))
-    }
-    return sweep(...parts)
+    return -1
 }
 
-function insideRange(ax, ay, bx, by, e) {
-    const wide = reachRange(ax, ay, bx, by, e)
-    if (!wide) return null
-    const edge = e.h / Math.hypot(bx - ax, by - ay)
-    const iv = sweep(bandRange(ax, ay, bx, by, e), wide[0] <= edge && [wide[0], Math.min(wide[1], edge)], wide[1] >= 1 - edge && [Math.max(wide[0], 1 - edge), wide[1]])
-    return iv && both([0, 1], iv)
-}
-
-function cutPolyline(pts, e, minLen) {
-    if (polylineLength(pts) < 1e-9) return dist2(pts[0], pts[1], e.x0, e.y0, e.x1, e.y1) <= (e.r + e.h) ** 2 ? [] : null
-    const pieces = []
-    let cur = []
-    let startCut = false
-    let off = 0
-    let acc = 0
-    let touched = false
-    const begin = (x, y, cut, at) => {
-        cur = [x, y]
-        startCut = cut
-        off = at
-    }
-    for (let i = 0; i < pts.length / 2 - 1; i++) {
-        const [ax, ay, bx, by] = pts.slice(2 * i, 2 * i + 4)
-        const seg = Math.hypot(bx - ax, by - ay)
-        const at = acc
-        acc += seg
-        const iv = seg > 1e-9 ? insideRange(ax, ay, bx, by, e) : null
-        if (!iv) {
-            if (!cur.length) begin(ax, ay, i > 0, at)
-            cur.push(bx, by)
-            continue
-        }
-        touched = true
-        const [t0, t1] = iv
-        if (t0 > 0) {
-            if (!cur.length) begin(ax, ay, i > 0, at)
-            cur.push(ax + t0 * (bx - ax), ay + t0 * (by - ay))
-        }
-        if (cur.length) pieces.push({ pts: cur, startCut, endCut: true, off })
-        cur = []
-        if (t1 < 1) {
-            begin(ax + t1 * (bx - ax), ay + t1 * (by - ay), true, at + t1 * seg)
-            cur.push(bx, by)
-        }
-    }
-    if (cur.length) pieces.push({ pts: cur, startCut, endCut: false, off })
-    return touched ? pieces.filter((p) => p.pts.length >= 4 && polylineLength(p.pts) >= minLen) : null
-}
-
-export function eraseStrokes(strokes, x0, y0, x1, y1, radius) {
-    let out = null
-    strokes.forEach((s, i) => {
-        const reach = radius + s.width / 2
+// check if there's any drawing near the eraser's path
+function touchesInk(strokes, x0, y0, x1, y1, r) {
+    const [minX, maxX, minY, maxY] = [Math.min(x0, x1) - r, Math.max(x0, x1) + r, Math.min(y0, y1) - r, Math.max(y0, y1) + r]
+    return strokes.some((s) => {
+        if (s.brush === "eraser") return false
         const b = boundsOf(s.points)
-        const far = b.maxX < Math.min(x0, x1) - reach || b.minX > Math.max(x0, x1) + reach || b.maxY < Math.min(y0, y1) - reach || b.minY > Math.max(y0, y1) + reach
-        const keep = Math.max(0.5, s.width * 1.5, Math.min(s.width * 3, 36))
-        const pieces = far ? null : cutPolyline(s.points, { x0, y0, x1, y1, r: radius, h: s.width / 2 }, keep)
-        if (!pieces) return out?.push(s)
-        out ??= strokes.slice(0, i)
-        for (const p of pieces) {
-            out.push({ ...s, id: newId(), src: s.src ?? s.id, points: p.pts, ...(s.brush === "spray" ? { off: (s.off ?? 0) + p.off, total: s.total ?? polylineLength(s.points) } : {}), ...(p.startCut ? { cutStart: true } : {}), ...(p.endCut ? { cutEnd: true } : {}) })
-        }
+        const pad = s.width / 2
+        return !(b.maxX + pad < minX || b.minX - pad > maxX || b.maxY + pad < minY || b.minY - pad > maxY)
     })
-    return out ?? strokes
 }
 
 // undo / redo
@@ -309,11 +237,17 @@ export class DrawingEditor {
         this.listeners.forEach((fn) => fn())
     }
 
-    record(before, after) {
+    // strokes are tracked by what was removed / added
+    record(before, after, fillsBefore = this.doc.fills, fillsAfter = this.doc.fills) {
         const removed = indexed(before, new Set(after.map((s) => s.id)))
         const added = indexed(after, new Set(before.map((s) => s.id)))
-        if (!removed.length && !added.length) return
-        this.undoStack.push({ removed, added })
+        const fillsChanged = fillsBefore !== fillsAfter
+        if (!removed.length && !added.length && !fillsChanged) return
+        this.pushOp({ removed, added, ...(fillsChanged && { fills: [fillsBefore, fillsAfter] }) })
+    }
+
+    pushOp(op) {
+        this.undoStack.push(op)
         if (this.undoStack.length > 200) this.undoStack.shift()
         this.redoStack = []
     }
@@ -321,59 +255,121 @@ export class DrawingEditor {
     beginStroke(style, x, y) {
         this.endGesture()
         const stroke = { id: newId(), points: [x, y, x, y], opacity: 1, lineCap: "round", lineJoin: "round", brush: "pencil", ...style }
-        this.gesture = { kind: "stroke", id: stroke.id, before: this.doc.strokes }
+        this.gesture = { kind: "stroke", id: stroke.id, before: this.doc.strokes, fills: this.doc.fills }
         this.doc.strokes = [...this.doc.strokes, stroke]
         this.emit()
     }
 
+    // The eraser is a stroke of its own that erases whatever was drawn before it
     beginErase(radius, x, y) {
         this.endGesture()
-        this.gesture = { kind: "erase", radius, x, y, before: this.doc.strokes }
-        this.pointerMove(x, y)
+        const eraser = { id: newId(), points: [x, y, x, y], width: radius * 2, color: "#000000", opacity: 1, lineCap: "round", lineJoin: "round", brush: "eraser" }
+        this.gesture = { kind: "erase", radius, ink: false, before: this.doc.strokes, fills: this.doc.fills }
+        this.doc.strokes = [...this.doc.strokes, eraser]
+        this.sweep(x, y, x, y)
+        this.emit()
+    }
+
+    // the eraser moved from (x0, y0) to (x1, y1)
+    sweep(x0, y0, x1, y1) {
+        const g = this.gesture
+        this.doc.fills = eraseFills(this.doc.fills, x0, y0, x1, y1, g.radius)
+        if (!g.ink) g.ink = touchesInk(g.before, x0, y0, x1, y1, g.radius)
     }
 
     pointerMove(x, y) {
         const g = this.gesture
         if (!g) return
         const strokes = this.doc.strokes
-        let next = strokes
-        if (g.kind === "erase") {
-            next = eraseStrokes(strokes, g.x, g.y, x, y, g.radius)
-            g.x = x
-            g.y = y
-        } else {
-            const s = strokes[strokes.length - 1]
-            const n = s.points.length
-            if (Math.hypot(x - s.points[n - 2], y - s.points[n - 1]) < 0.5) return
-            next = [...strokes.slice(0, -1), { ...s, points: [...s.points, x, y] }]
-        }
-        if (next !== strokes) {
-            this.doc.strokes = next
-            this.emit()
-        }
+        const s = strokes[strokes.length - 1]
+        const n = s.points.length
+        if (Math.hypot(x - s.points[n - 2], y - s.points[n - 1]) < 0.5) return
+        if (g.kind === "erase") this.sweep(s.points[n - 2], s.points[n - 1], x, y)
+        this.doc.strokes = [...strokes.slice(0, -1), { ...s, points: [...s.points, x, y] }]
+        this.emit()
     }
 
     endGesture() {
         const g = this.gesture
         if (!g) return
         this.gesture = null
-        if (g.kind === "stroke") {
+        if (g.kind === "erase" && !g.ink) {
+            this.doc.strokes = g.before // nothing to erase, so no eraser stroke is kept
+        } else {
             const s = this.doc.strokes[this.doc.strokes.length - 1]
             const points = simplifyPoints(s.points, 0.4).map(tenth)
             this.doc.strokes = [...this.doc.strokes.slice(0, -1), { ...s, points }]
-        } else {
-            const old = new Set(g.before.map((s) => s.id))
-            this.doc.strokes = this.doc.strokes.map((s) => (old.has(s.id) ? s : { ...s, points: s.points.map(tenth) }))
         }
-        this.record(g.before, this.doc.strokes)
+        if (g.kind === "erase" && this.doc.fills !== g.fills) {
+            // fills the eraser cut: smooth the polygon and drop tiny leftovers
+            const oldFills = new Set(g.fills)
+            this.doc.fills = this.doc.fills.map((f) => (oldFills.has(f) ? f : tidyFill(f))).filter(Boolean)
+        }
+        this.record(g.before, this.doc.strokes, g.fills, this.doc.fills)
         this.emit()
+    }
+
+    // paint bucket
+    fill(style, x, y) {
+        this.endGesture()
+        const strokes = this.doc.strokes
+        const hit = visibleStrokeAt(strokes, x, y)
+        if (hit !== -1) return this.recolor(hit, x, y, style)
+
+        const { rgba, ink } = renderPage(this.doc)
+        const region = regionFromImage(rgba, ink, this.doc.canvas.width, this.doc.canvas.height, x, y)
+        if (!region) return false
+        const before = this.doc.fills
+        this.doc.fills = [...subtractRegion(before, region), { id: newId(), color: style.color, opacity: style.opacity, poly: region }]
+        this.record(strokes, strokes, before, this.doc.fills)
+        this.emit()
+        return true
+    }
+
+    // Gives the piece of line under (x, y) a new colour
+    recolor(hit, x, y, style) {
+        const strokes = this.doc.strokes
+        const src = strokes[hit].src ?? strokes[hit].id
+        const group = []
+        strokes.forEach((s, index) => {
+            if (s.brush !== "eraser" && (s.src ?? s.id) === src) group.push({ s, index })
+        })
+        const first = group[0].index
+        const erasers = strokes.filter((s, i) => s.brush === "eraser" && i > first)
+        const { width: w, height: h } = this.doc.canvas
+        const piece = connectedPiece(group.map((g) => g.s), erasers, Math.round(w), Math.round(h), x, y)
+
+        const replacements = new Map() // index -> the strokes that take its place
+        for (const { s, index } of group) {
+            const parts = splitByPiece(s, piece, style)
+            if (parts) replacements.set(index, parts)
+        }
+        if (!replacements.size) return false
+
+        const removed = []
+        const added = []
+        const next = []
+        strokes.forEach((s, index) => {
+            const parts = replacements.get(index)
+            if (!parts) return next.push(s)
+            removed.push({ stroke: s, index })
+            for (const part of parts) {
+                added.push({ stroke: part, index: next.length })
+                next.push(part)
+            }
+        })
+        this.doc.strokes = next
+        this.pushOp({ removed, added })
+        this.emit()
+        return true
     }
 
     step(from, to, forward) {
         if (this.gesture || !from.length) return
         const op = from.pop()
         const [remove, insert] = forward ? [op.removed, op.added] : [op.added, op.removed]
-        this.doc.strokes = replaceStrokes(this.doc.strokes, remove, insert)
+        if (remove.length || insert.length) this.doc.strokes = replaceStrokes(this.doc.strokes, remove, insert)
+        if (op.fills) this.doc.fills = op.fills[forward ? 1 : 0]
         to.push(op)
         this.emit()
     }
@@ -389,8 +385,10 @@ export class DrawingEditor {
     clear() {
         if (this.gesture) return
         const before = this.doc.strokes
+        const fillsBefore = this.doc.fills
         this.doc.strokes = []
-        this.record(before, [])
+        this.doc.fills = []
+        this.record(before, [], fillsBefore, [])
         this.emit()
     }
 
@@ -434,7 +432,7 @@ export function getEditor(pageIndex) {
     if (!editor) {
         editor = new DrawingEditor()
         editors.set(pageIndex, editor)
-        persist.saved[pageIndex] = editor.doc.strokes // a brand new, empty drawing counts as saved
+        persist.saved[pageIndex] = snapshotOf(editor) // a brand new, empty drawing counts as saved
     }
     return editor
 }
@@ -458,13 +456,21 @@ export function useDrawingTools() {
         opacity: t.opacity, setOpacity,
         undo: () => owner.undo(),
         redo: () => owner.redo(),
-        clearAll: () => owner.doc.strokes.length && window.confirm("Delete your whole drawing?") && owner.clear(),
+        clearAll: () => (owner.doc.strokes.length || owner.doc.fills.length) && window.confirm("Delete your whole drawing?") && owner.clear(),
         canUndo: owner.canUndo,
         canRedo: owner.canRedo,
     }
 }
 
 // saving to database
+
+const snapshotOf = (editor) => ({ strokes: editor.doc.strokes, fills: editor.doc.fills })
+
+const isSaved = (index) => {
+    const saved = persist.saved[index]
+    const doc = getEditor(index).doc
+    return !!saved && saved.strokes === doc.strokes && saved.fills === doc.fills
+}
 
 const persist = { storyId: null, studentIds: [], myIndex: -1, segmentIds: {}, saved: {}, remote: {} }
 const statusStore = createStore({ rev: 0, error: false })
@@ -475,7 +481,7 @@ export function useDrawingStatus(index) {
     const editor = getEditor(index)
     useSyncExternalStore(editor.subscribe, editor.getVersion, editor.getVersion)
     const { error } = useSyncExternalStore(statusStore.subscribe, statusStore.get, statusStore.get)
-    return { saved: editor.doc.strokes === persist.saved[index], error }
+    return { saved: isSaved(index), error }
 }
 
 async function segmentIdFor(index) {
@@ -489,8 +495,8 @@ async function segmentIdFor(index) {
 // creates the student's story_segments row if it doesn't exist yet, returns its segment_id
 export async function saveDrawing(index, makeSegment) {
     const editor = getEditor(index)
-    const strokes = editor.doc.strokes
-    if (strokes === persist.saved[index]) return true
+    if (isSaved(index)) return true
+    const snapshot = snapshotOf(editor) // what is being saved, in case the drawing changes while it uploads
     const data = editor.toJSON()
     let segmentId = await segmentIdFor(index)
     if (!segmentId && makeSegment) segmentId = persist.segmentIds[index] = await makeSegment()
@@ -505,7 +511,7 @@ export async function saveDrawing(index, makeSegment) {
         setStatus({ error: true })
         return false
     }
-    persist.saved[index] = strokes // keep the saved drawing showing
+    persist.saved[index] = snapshot // keep the saved drawing showing
     setStatus({ error: false })
     return true
 }
@@ -534,13 +540,13 @@ export async function loadDrawings() {
         const editor = getEditor(index)
         const raw = JSON.stringify(row.drawing_data)
         if (index === persist.myIndex) {
-            if (editor.doc.strokes.length || editor.canUndo) continue
+            if (editor.doc.strokes.length || editor.doc.fills.length || editor.canUndo) continue
         } else if (persist.remote[index] === raw) {
             continue // nothing new from this student
         }
         try {
             editor.load(row.drawing_data)
-            persist.saved[index] = editor.doc.strokes
+            persist.saved[index] = snapshotOf(editor)
             persist.remote[index] = raw
         } catch (e) {
             console.log("Could not read saved drawing: ", e)
@@ -592,6 +598,20 @@ function addEndCap(ctx, x, y, [ux, uy], w, cap, back) {
     ctx.lineTo(x - px - ux * back, y - py - uy * back)
     ctx.lineTo(x + px - ux * back, y + py - uy * back)
     ctx.closePath()
+}
+
+// fill as a polygon drawn underneath all the strokes
+function drawFill(ctx, fill) {
+    ctx.beginPath()
+    for (const polygon of fill.poly) {
+        for (const ring of polygon) {
+            ring.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)))
+            ctx.closePath()
+        }
+    }
+    ctx.setAttr("globalAlpha", fill.opacity)
+    ctx.setAttr("fillStyle", fill.color)
+    ctx.fill()
 }
 
 function drawPencilGroup(ctx, strokes) {
@@ -760,9 +780,67 @@ function drawBristleGroup(ctx, strokes) {
     }
 }
 
+// rubs out everything drawn before it in the same layer
+function drawEraserGroup(ctx, strokes) {
+    ctx.setAttr("globalCompositeOperation", "destination-out")
+    ctx.setAttr("globalAlpha", 1)
+    ctx.setAttr("strokeStyle", "#000000")
+    ctx.setAttr("lineWidth", strokes[0].width)
+    ctx.setAttr("lineCap", "round")
+    ctx.setAttr("lineJoin", "round")
+    tracePaths(ctx, strokes)
+    ctx.stroke()
+    // a click without dragging is a zero-length line, which not every browser draws a dot for, so cap the ends explicitly
+    ctx.setAttr("fillStyle", "#000000")
+    ctx.beginPath()
+    for (const { points: p, width } of strokes) {
+        ctx.moveTo(p[0] + width / 2, p[1])
+        ctx.arc(p[0], p[1], width / 2, 0, Math.PI * 2)
+        ctx.moveTo(p[p.length - 2] + width / 2, p[p.length - 1])
+        ctx.arc(p[p.length - 2], p[p.length - 1], width / 2, 0, Math.PI * 2)
+    }
+    ctx.fill()
+}
+
 export function drawStrokeGroup(ctx, strokes) {
-    if (strokes[0].brush === "spray") drawBristleGroup(ctx, strokes)
+    if (strokes[0].brush === "eraser") drawEraserGroup(ctx, strokes)
+    else if (strokes[0].brush === "spray") drawBristleGroup(ctx, strokes)
     else drawPencilGroup(ctx, strokes)
+}
+
+// Draws the page on screen
+function renderPage(doc) {
+    const w = Math.round(doc.canvas.width)
+    const h = Math.round(doc.canvas.height)
+    const make = () => {
+        const c = document.createElement("canvas")
+        c.width = w
+        c.height = h
+        const ctx = c.getContext("2d", { willReadFrequently: true })
+        ctx.setAttr = (key, value) => { ctx[key] = value }
+        return [c, ctx]
+    }
+    const [fillCanvas, fillCtx] = make()
+    for (const f of doc.fills) {
+        fillCtx.save()
+        drawFill(fillCtx, f)
+        fillCtx.restore()
+    }
+    const [inkCanvas, inkCtx] = make()
+    for (const g of groupStrokes(doc.strokes)) {
+        inkCtx.save()
+        drawStrokeGroup(inkCtx, g.strokes)
+        inkCtx.restore()
+    }
+    const [, pageCtx] = make()
+    pageCtx.fillStyle = "#ffffff"
+    pageCtx.fillRect(0, 0, w, h)
+    pageCtx.drawImage(fillCanvas, 0, 0)
+    pageCtx.drawImage(inkCanvas, 0, 0)
+    const inkPixels = inkCtx.getImageData(0, 0, w, h).data
+    const ink = new Uint8Array(w * h)
+    for (let i = 0; i < ink.length; i++) ink[i] = inkPixels[4 * i + 3]
+    return { rgba: pageCtx.getImageData(0, 0, w, h).data, ink }
 }
 
 const sameLook = (a, b) => ["color", "width", "opacity", "brush", "lineCap", "lineJoin"].every((k) => a[k] === b[k])
@@ -783,13 +861,158 @@ export function groupStrokes(strokes) {
     return groups
 }
 
+// Which pixels belong to the line piece clicked
+function connectedPiece(group, erasers, w, h, x, y) {
+    const c = document.createElement("canvas")
+    c.width = w
+    c.height = h
+    const ctx = c.getContext("2d", { willReadFrequently: true })
+    ctx.setAttr = (key, value) => { ctx[key] = value }
+    const solid = group.map((s) => ({ ...s, brush: "pencil", opacity: 1, color: "#000000" })) // spray's speckles would count as gaps
+    for (const g of [...groupStrokes(solid), ...groupStrokes(erasers)]) {
+        ctx.save()
+        drawStrokeGroup(ctx, g.strokes)
+        ctx.restore()
+    }
+    const data = ctx.getImageData(0, 0, w, h).data
+    const solidAt = (i) => data[4 * i + 3] >= 64
+
+    // start from the clicked pixel, or the closest line pixel just next to it
+    const px = Math.floor(x)
+    const py = Math.floor(y)
+    let start = -1
+    let best = Infinity
+    for (let dy = -4; dy <= 4; dy++) {
+        for (let dx = -4; dx <= 4; dx++) {
+            const nx = px + dx
+            const ny = py + dy
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h || !solidAt(ny * w + nx)) continue
+            if (dx * dx + dy * dy < best) [best, start] = [dx * dx + dy * dy, ny * w + nx]
+        }
+    }
+    if (start === -1) return null
+
+    const piece = new Uint8Array(w * h)
+    const stack = [start]
+    piece[start] = 1
+    while (stack.length) {
+        const i = stack.pop()
+        const cx = i % w
+        const cy = (i / w) | 0
+        for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+                const nx = cx + dx
+                const ny = cy + dy
+                if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue
+                const j = ny * w + nx
+                if (!piece[j] && solidAt(j)) {
+                    piece[j] = 1
+                    stack.push(j)
+                }
+            }
+        }
+    }
+    return { mask: piece, w, h }
+}
+
+// the part of the polyline between distance a and b along it
+function slicePolyline(p, cum, a, b) {
+    const at = (t) => {
+        let k = 0
+        while (k < cum.length - 2 && cum[k + 1] < t) k++
+        const len = cum[k + 1] - cum[k]
+        const f = len > 0 ? Math.min(1, Math.max(0, (t - cum[k]) / len)) : 0
+        return [p[2 * k] + (p[2 * k + 2] - p[2 * k]) * f, p[2 * k + 1] + (p[2 * k + 3] - p[2 * k + 1]) * f]
+    }
+    const out = [...at(a)]
+    for (let k = 0; k < cum.length; k++) if (cum[k] > a && cum[k] < b) out.push(p[2 * k], p[2 * k + 1])
+    out.push(...at(b))
+    return out
+}
+
+// Returns what should replace stroke s so that only the part inside piece has the new style
+function splitByPiece(s, piece, style) {
+    const same = s.color === style.color && s.opacity === style.opacity
+    const recolored = (o) => ({ ...o, color: style.color, opacity: style.opacity })
+    if (!piece) return same ? null : [recolored(s)] // could not tell which piece, so the whole line
+
+    const p = s.points
+    const cum = [0]
+    for (let i = 2; i < p.length; i += 2) cum.push(cum[cum.length - 1] + Math.hypot(p[i] - p[i - 2], p[i + 1] - p[i - 1]))
+    const length = cum[cum.length - 1]
+    const half = s.width / 2
+    const count = Math.max(1, Math.ceil(length))
+    const T = []
+    const inside = []
+    let k = 0
+    for (let i = 0; i <= count; i++) {
+        const t = Math.min(i, length)
+        while (k < cum.length - 2 && cum[k + 1] < t) k++
+        const len = cum[k + 1] - cum[k]
+        const dx = len > 0 ? (p[2 * k + 2] - p[2 * k]) / len : 1
+        const dy = len > 0 ? (p[2 * k + 3] - p[2 * k + 1]) / len : 0
+        const cx = p[2 * k] + dx * (t - cum[k])
+        const cy = p[2 * k + 1] + dy * (t - cum[k])
+        let hit = false
+        for (let o = -half; o <= half + 0.5 && !hit; o += 1) {
+            const sx = Math.floor(cx - dy * Math.min(o, half))
+            const sy = Math.floor(cy + dx * Math.min(o, half))
+            hit = sx >= 0 && sy >= 0 && sx < piece.w && sy < piece.h && piece.mask[sy * piece.w + sx] === 1
+        }
+        T.push(t)
+        inside.push(hit)
+    }
+    // a run only a pixel or two long is rounding at the edge of a cut, not a real piece so fold it into its neighbour
+    const runs = []
+    inside.forEach((v, i) => (runs.length && runs[runs.length - 1].v === v ? runs[runs.length - 1].n++ : runs.push({ v, n: 1 })))
+    for (; ;) {
+        const tiny = runs.findIndex((r) => r.n < 3)
+        if (tiny === -1 || runs.length === 1) break
+        const [prev, next] = [runs[tiny - 1], runs[tiny + 1]]
+        const into = !prev ? next : !next ? prev : prev.n >= next.n ? prev : next
+        runs[tiny].v = into.v
+        for (let i = runs.length - 1; i > 0; i--) if (runs[i].v === runs[i - 1].v) runs.splice(i - 1, 2, { v: runs[i].v, n: runs[i].n + runs[i - 1].n })
+    }
+    inside.length = 0
+    for (const r of runs) for (let i = 0; i < r.n; i++) inside.push(r.v)
+
+    if (!inside.some(Boolean)) return null // this stroke has nothing in the clicked piece
+    if (inside.every(Boolean)) return same ? null : [recolored(s)]
+    if (same) return null
+
+    const out = []
+    let from = 0
+    for (let i = 1; i <= inside.length; i++) {
+        if (i < inside.length && inside[i] === inside[from]) continue
+        const a = from === 0 ? 0 : (T[from - 1] + T[from]) / 2
+        const b = i === inside.length ? length : (T[i - 1] + T[i]) / 2
+        const part = {
+            ...s,
+            id: newId(),
+            src: s.src ?? s.id,
+            points: slicePolyline(p, cum, a, b),
+            ...(s.brush === "spray" ? { off: (s.off ?? 0) + a, total: s.total ?? length } : {}),
+            ...(a > 0 ? { cutStart: true } : {}),
+            ...(b < length ? { cutEnd: true } : {}),
+        }
+        out.push(inside[from] ? recolored(part) : part)
+        from = i
+    }
+    return out
+}
+
 const KonvaScene = dynamic(
     () =>
         import("react-konva").then(({ Stage, Layer, Shape, Circle, Group }) => {
-            function Scene({ width, height, scale, strokes, handlers, layerRef, ringRef, onReady }) {
+            function Scene({ width, height, scale, strokes, fills, handlers, fillsRef, layerRef, ringRef, onReady }) {
                 useEffect(onReady, [])
                 return (
                     <Stage width={width} height={height} scaleX={scale} scaleY={scale} {...handlers}>
+                        <Layer ref={fillsRef} listening={false}>
+                            {fills.map((f) => (
+                                <Shape key={f.id} sceneFunc={(ctx) => drawFill(ctx, f)} />
+                            ))}
+                        </Layer>
                         <Layer ref={layerRef} listening={false}>
                             {groupStrokes(strokes).map((g) => (
                                 <Shape key={g.key} sceneFunc={(ctx) => drawStrokeGroup(ctx, g.strokes)} />
@@ -820,10 +1043,11 @@ export function DrawingCanvas({ pageIndex, editable = false }) {
     const editor = getEditor(pageIndex)
     const tools = useTools()
     useSyncExternalStore(editor.subscribe, editor.getVersion, editor.getVersion)
-    const { strokes, canvas } = editor.doc
+    const { strokes, fills, canvas } = editor.doc
     const size = BRUSH_SIZES[tools.sizeIndex]
 
     const wrapRef = useRef(null)
+    const fillsRef = useRef(null)
     const layerRef = useRef(null)
     const ringRef = useRef(null)
     const drawing = useRef(false)
@@ -831,7 +1055,7 @@ export function DrawingCanvas({ pageIndex, editable = false }) {
     const [ready, setReady] = useState(false)
     const [tick, setTick] = useState(0)
     const latest = useRef({})
-    latest.current = { scale, strokes, pageIndex, end: null }
+    latest.current = { scale, strokes, fills, pageIndex, end: null }
 
     useEffect(() => {
         const el = wrapRef.current
@@ -839,8 +1063,8 @@ export function DrawingCanvas({ pageIndex, editable = false }) {
             const fitted = Math.min(el.clientWidth / canvas.width, el.clientHeight / canvas.height)
             const device = (window.devicePixelRatio || 1) * (el.getBoundingClientRect().width / el.clientWidth || 1)
             setScale(fitted)
-            const layer = layerRef.current
-            if (layer) {
+            for (const layer of [fillsRef.current, layerRef.current]) {
+                if (!layer) continue
                 layer.getCanvas().setPixelRatio(device)
                 layer.batchDraw()
             }
@@ -858,15 +1082,16 @@ export function DrawingCanvas({ pageIndex, editable = false }) {
     useEffect(() => {
         if (drawing.current || !ready) return
         const id = requestAnimationFrame(() => {
-            const { scale: s, strokes: list, pageIndex: page } = latest.current
+            const { scale: s, strokes: list, fills: filled, pageIndex: page } = latest.current
             const layer = layerRef.current
             if (!layer) return
+            fillsRef.current?.draw()
             layer.draw()
-            const url = list.length ? layer.getStage().toDataURL({ pixelRatio: 1 / s, mimeType: "image/png" }) : null
+            const url = list.length || filled.length ? layer.getStage().toDataURL({ pixelRatio: 1 / s, mimeType: "image/png" }) : null
             snapshotStore.set((prev) => ((prev[page] ?? null) === url ? prev : { ...prev, [page]: url }))
         })
         return () => cancelAnimationFrame(id)
-    }, [strokes, tick, ready])
+    }, [strokes, fills, tick, ready])
 
     const end = () => {
         if (!drawing.current) return
@@ -899,6 +1124,7 @@ export function DrawingCanvas({ pageIndex, editable = false }) {
         if (tool === "eraser") editor.beginErase(size * 1.25, p.x, p.y)
         else if (tool === "pencil") editor.beginStroke({ ...style, width: size }, p.x, p.y)
         else if (tool === "spray") editor.beginStroke({ ...style, width: size * 2.5, brush: "spray" }, p.x, p.y)
+        else if (tool === "fill") return void editor.fill(style, p.x, p.y) // one click, nothing to drag
         else return
         drawing.current = true
     }
@@ -925,13 +1151,15 @@ export function DrawingCanvas({ pageIndex, editable = false }) {
     }
 
     return (
-        <div ref={wrapRef} className="flex h-full w-full touch-none items-center justify-center overflow-hidden" style={{ cursor: editable && ringTools.includes(tools.tool) ? "none" : "default" }}>
+        <div ref={wrapRef} className="flex h-full w-full touch-none items-center justify-center overflow-hidden" style={{ cursor: editable && ringTools.includes(tools.tool) ? "none" : editable && tools.tool === "fill" ? "crosshair" : "default" }}>
             <KonvaScene
                 width={canvas.width * scale}
                 height={canvas.height * scale}
                 scale={scale}
                 strokes={strokes}
+                fills={fills}
                 handlers={{ onMouseDown: down, onTouchStart: down, onMouseMove: move, onTouchMove: move, onMouseUp: end, onTouchEnd: end, onMouseLeave: () => showRing(null) }}
+                fillsRef={fillsRef}
                 layerRef={layerRef}
                 ringRef={ringRef}
                 onReady={() => setReady(true)}
