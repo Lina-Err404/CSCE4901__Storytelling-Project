@@ -18,7 +18,7 @@
     "dotenv": "^18.0.8",
     "firebase": "^13.1.0",
     "firebase-admin": "^14.5.0",
-    "konva": "^10.9.0",
+    "konva": "^10.9.1",
     "lucide-react": "^1.59.0",
     "next": "^16.4.2",
     "react": "^19.3.1",

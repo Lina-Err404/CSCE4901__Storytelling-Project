@@ -1,10 +1,11 @@
 "use client"
 
-import React, { useState } from 'react'
+import React from 'react'
 import Image from 'next/image'
 import pencilIcon from '../../../../public/images/pageAssets/pencilIcon.png'
 import spraycanIcon from '../../../../public/images/pageAssets/spraycanIcon.png'
 import eraserIcon from '../../../../public/images/pageAssets/eraserIcon.png'
+import { BRUSH_SIZES, useDrawingTools } from './drawingCanvas'
 
 const PALETTE_COLORS = [
   '#FFFFFF', '#000000', '#868686', '#5C3922',
@@ -14,13 +15,14 @@ const PALETTE_COLORS = [
   '#C1E6EE', '#7B86FC', '#CA8EEA', '#F07FB4',
 ]
 
-const BRUSH_SIZES = [4, 7, 10, 13, 16]
-
 function DrawingSidePanel() {
-  const [selectedColor, setSelectedColor] = useState('#000000')
-  const [selectedTool, setSelectedTool] = useState<'pencil' | 'spray' | 'eraser' | 'fill'>('pencil')
-  const [sizeIndex, setSizeIndex] = useState(2)
-  const [opacity, setOpacity] = useState(100)
+  const {
+    color: selectedColor, setColor: setSelectedColor,
+    tool: selectedTool, setTool: setSelectedTool,
+    sizeIndex, setSizeIndex,
+    opacity, setOpacity,
+    undo, redo, clearAll, canUndo, canRedo,
+  } = useDrawingTools()
 
   return (
     <div className="absolute top-10 right-0 bottom-16 z-10 flex w-60 flex-col overflow-hidden rounded-l-4xl border-3 border-solid border-[#334670] bg-[#497BC3] px-3.5 pt-4 pb-0 shadow-xl select-none">
@@ -30,15 +32,19 @@ function DrawingSidePanel() {
         <div className="flex gap-1.5">
           <button
             type="button"
+            onClick={undo}
+            disabled={!canUndo}
             style={{ fontSize: '12px', lineHeight: '1', padding: '0 10px' }}
-            className="h-9 flex items-center justify-center bg-[#FFC250] hover:bg-[#ffb020] active:translate-y-0.5 transition-all cursor-pointer rounded-md border-3 border-black font-bold text-black shadow-[0_2px_0_#000]"
+            className="h-9 flex items-center justify-center bg-[#FFC250] hover:bg-[#ffb020] active:translate-y-0.5 transition-all cursor-pointer rounded-md border-3 border-black font-bold text-black shadow-[0_2px_0_#000] disabled:opacity-50 disabled:cursor-default"
           >
             undo
           </button>
           <button
             type="button"
+            onClick={redo}
+            disabled={!canRedo}
             style={{ fontSize: '12px', lineHeight: '1', padding: '0 10px' }}
-            className="h-9 flex items-center justify-center bg-[#FFC250] hover:bg-[#ffb020] active:translate-y-0.5 transition-all cursor-pointer rounded-md border-3 border-black font-bold text-black shadow-[0_2px_0_#000]"
+            className="h-9 flex items-center justify-center bg-[#FFC250] hover:bg-[#ffb020] active:translate-y-0.5 transition-all cursor-pointer rounded-md border-3 border-black font-bold text-black shadow-[0_2px_0_#000] disabled:opacity-50 disabled:cursor-default"
           >
             redo
           </button>
@@ -46,8 +52,9 @@ function DrawingSidePanel() {
 
         <button
           type="button"
+          onClick={clearAll}
           style={{ fontSize: '12px', lineHeight: '1', padding: '0 10px' }}
-          className="h-9 flex items-center justify-center whitespace-nowrap bg-[#D4D4D8] hover:bg-[#fca5a5] active:translate-y-0.5 transition-all cursor-pointer rounded-md border-3 border-black font-bold text-black shadow-[0_2px_0_#000]"
+          className="h-9 flex items-center justify-center whitespace-nowrap bg-[#D4D4D8] hover:bg-[#fca5a5] active:translate-y-0.5 transition-all cursor-pointer rounded-md border-3 border-black font-bold text-black shadow-[0_2px_0_#000] disabled:opacity-50 disabled:cursor-default"
         >
           delete all
         </button>
@@ -119,7 +126,7 @@ function DrawingSidePanel() {
         <div className="flex flex-1 rounded-lg overflow-hidden border-3 border-black shadow-[0_2px_0_#000] bg-white">
           <button
             type="button"
-            onClick={() => setSizeIndex((prev) => Math.max(0, prev - 1))}
+            onClick={() => setSizeIndex((prev: number) => Math.max(0, prev - 1))}
             disabled={sizeIndex === 0}
             style={{ fontSize: '16px', lineHeight: '1', padding: 0 }}
             className="w-8 flex items-center justify-center bg-[#FFC250] hover:bg-[#ffb020] disabled:opacity-50 cursor-pointer border-r-3 border-black font-bold text-black"
@@ -141,7 +148,7 @@ function DrawingSidePanel() {
 
           <button
             type="button"
-            onClick={() => setSizeIndex((prev) => Math.min(BRUSH_SIZES.length - 1, prev + 1))}
+            onClick={() => setSizeIndex((prev: number) => Math.min(BRUSH_SIZES.length - 1, prev + 1))}
             disabled={sizeIndex === BRUSH_SIZES.length - 1}
             style={{ fontSize: '16px', lineHeight: '1', padding: 0 }}
             className="w-8 flex items-center justify-center bg-[#FFC250] hover:bg-[#ffb020] disabled:opacity-50 cursor-pointer border-l-3 border-black font-bold text-black"

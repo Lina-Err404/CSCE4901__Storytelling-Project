@@ -8,6 +8,7 @@ import TopBar from "./components/topBar"
 import StampSidePanel from "./components/stampSidePanel"
 import DrawingSidePanel from "./components/drawingSidePanel"
 import WritingSidePanel from "./components/writingSidePanel"
+import { setDrawingStory } from "./components/drawingCanvas"
 import supabase from "@/src/utils/supabase"
 import { AppSidebar } from "@/components/app-sidebar"
 import { Separator } from "@/components/ui/separator"
@@ -41,6 +42,10 @@ export default function Home() {
       setNames(next)
     })
   }, [])
+  useEffect(() => {
+    setDrawingStory(STORY_ID, STUDENTS)
+  }, [])
+
   // Writing mode shows the right (writing) page, drawing mode shows the left (drawing) page.
   // Shared by the top bar button and the book.
   const [mode, setMode] = useState<"writing" | "drawing">("writing")

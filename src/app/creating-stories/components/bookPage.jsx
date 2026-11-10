@@ -1,6 +1,7 @@
 "use client"
 
-import React, { useLayoutEffect, useRef, useState } from "react"
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { DrawingCanvas, DrawingSnapshot, setDrawingOwner } from "./drawingCanvas"
 
 const FLIP_MS = 1000
 const STRIPS = 12 // the turning page is built from strips so it can bend like paper
@@ -77,9 +78,8 @@ function PageBody({ side, page, number, editable, onChangeText, onSave }) {
     )
 }
 
-/* the drawing page (left page)
-   Placeholder for now: a blank, labelled drawing area. The Konva <Stage> for drawing goes inside the area div below later. */
-function DrawingBody({ page, number }) {
+/* the drawing page (left page) */
+function DrawingBody({ page, number, pageIndex, editable = false, live = false }) {
     if (!page) return null
     return (
         <>
@@ -87,9 +87,11 @@ function DrawingBody({ page, number }) {
                 {page.mine ? "Your drawing" : `${page.name}’s drawing`}
             </span>
             <div
-                className="absolute rounded-xl bg-[#f7f7fa]"
+                className="absolute overflow-hidden rounded-xl bg-[#f7f7fa]"
                 style={{ inset: "13% 8% 10% 6%", border: page.mine ? "1.5px dashed #c3c6d4" : "1.5px solid transparent" }}
-            />
+            >
+                {live ? <DrawingCanvas pageIndex={pageIndex} editable={editable} /> : <DrawingSnapshot pageIndex={pageIndex} />}
+            </div>
             <span className="absolute left-0 right-0 text-center text-[#b4b6c2]" style={{ bottom: "3.5%", fontSize: SMALL_SIZE }}>
                 {number}
             </span>
@@ -100,7 +102,7 @@ function DrawingBody({ page, number }) {
 /* the turning page */
 const SW = `calc(var(--pw) / ${STRIPS})` // width of one strip
 
-function Strip({ i, front, back, frontNumber, backNumber }) {
+function Strip({ i, front, back, backIndex, frontNumber, backNumber }) {
     const face = { position: "absolute", top: 0, left: 0, width: "calc(100% + 0.25px)", height: "100%", overflow: "hidden", backfaceVisibility: "hidden" }
     // each strip shows its own slice of a full-size page
     const fullPage = (slice) => ({ position: "absolute", top: 0, left: `calc(${SW} * ${-slice})`, width: "var(--pw)", height: "100%" })
@@ -146,14 +148,14 @@ function Strip({ i, front, back, frontNumber, backNumber }) {
             <div style={{ ...face, transform: "rotateY(180deg)" }}>
                 <div style={fullPage(STRIPS - 1 - i)}>
                     <Face side="left">
-                        <DrawingBody page={back} number={backNumber} />
+                        <DrawingBody page={back} number={backNumber} pageIndex={backIndex} />
                     </Face>
                     <div style={shade("to left")} />
                     <div style={hinge("to left")} />
                 </div>
             </div>
 
-            {i < STRIPS - 1 && <Strip i={i + 1} front={front} back={back} frontNumber={frontNumber} backNumber={backNumber} />}
+            {i < STRIPS - 1 && <Strip i={i + 1} front={front} back={back} backIndex={backIndex} frontNumber={frontNumber} backNumber={backNumber} />}
         </div>
     )
 }
@@ -172,6 +174,10 @@ function BookPage({ pages, index, myIndex, mode = "writing", onTurn, onJump, onC
     const leftIdx = anim ? leafIdx : index // drawing page showing on the left
     const rightIdx = anim ? leafIdx + 1 : index // writing page showing on the right
     const canEdit = !anim && index === myIndex && mode === "writing" // only owned page, and only in writing mode
+    useEffect(() => {
+        setDrawingOwner(myIndex)
+    }, [myIndex])
+    const canDraw = !anim && index === myIndex && mode === "drawing" // only owned page, and only in drawing mode
 
     const turn = (dir) => {
         if (anim) return
@@ -254,7 +260,7 @@ function BookPage({ pages, index, myIndex, mode = "writing", onTurn, onJump, onC
                     {/* left page: the page before */}
                     <div className="absolute left-0 top-0 h-full w-1/2">
                         <Face side="left">
-                            <DrawingBody page={page(leftIdx)} number={2 * leftIdx + 1} />
+                            <DrawingBody page={page(leftIdx)} number={2 * leftIdx + 1} pageIndex={leftIdx} editable={canDraw} live />
                         </Face>
                         {anim && (
                             <div
@@ -300,7 +306,7 @@ function BookPage({ pages, index, myIndex, mode = "writing", onTurn, onJump, onC
                             className="pointer-events-none absolute left-1/2 top-0 z-30 h-full w-1/2"
                             style={{ transformStyle: "preserve-3d", transformOrigin: "0 50%", willChange: "transform", "--bend": "0deg", "--shade": 0 }}
                         >
-                            <Strip i={0} front={page(leafIdx)} back={page(leafIdx + 1)} frontNumber={2 * leafIdx + 2} backNumber={2 * (leafIdx + 1) + 1} />
+                            <Strip i={0} front={page(leafIdx)} back={page(leafIdx + 1)} backIndex={leafIdx + 1} frontNumber={2 * leafIdx + 2} backNumber={2 * (leafIdx + 1) + 1} />
                         </div>
                     )}
                 </div>
