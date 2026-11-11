@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AuthScreen } from "./auth-screen";
 import { auth, authConfigurationMissing } from "./firebase-client";
@@ -516,6 +517,12 @@ export default function Home() {
               <span className="rounded-full bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
                 ● Teacher
               </span>
+              <Link
+                href="/supabase-lobbies"
+                className="rounded-lg border border-indigo-300 px-3 py-2 text-sm font-semibold text-indigo-700"
+              >
+                Supabase Lobby
+              </Link>
               <button
                 onClick={handleSignOut}
                 className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold"

@@ -25,3 +25,9 @@ Run the API with `npm run dev:api` and the Firestore tests with `npm test` from 
 
 - The root `firestore.rules` denies direct client reads and writes; service access is through the Admin-backed API.
 - Existing lowercase lobby modules remain for the earlier prototype; the R13 route is mounted from `lobbyRoutes.js` and uses `Lobbies/{code}`.
+
+## Supabase R13 coexistence
+
+Firebase remains the default backend for the existing app features and API routes. The separate R13 Supabase implementation is mounted under `/supabase` and accepts Supabase Auth access tokens; the web UI is at `/supabase-lobbies` and calls it through the `/api` rewrite. Supabase Socket.IO clients connect to the `/supabase` namespace, leaving the Firebase-backed default namespace unchanged.
+
+Set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY` in the repository-root `.env`. The browser only uses the URL and anon key; keep the service-role key server-only. If Supabase is not configured, `/supabase/*` returns 503 while Firebase routes continue to run. Provision teacher roles through the Supabase dashboard; new Supabase accounts default to students.
