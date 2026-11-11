@@ -1,16 +1,30 @@
 const express = require('express');
 const { createRandomBreakoutRooms } = require('./randomBreakoutRooms');
 
-function createRandomBreakoutRoutes({ db, requireTeacher }) {
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function throwOnError(result) {
+  if (result.error) throw result.error;
+  return result.data;
+}
+
+function createRandomBreakoutRoutes({ supabase, requireTeacher }) {
   const router = express.Router();
 
   router.post(
-    '/lobbies/:lobbyId/breakout-rooms/random',
+    '/lobbies/:id/breakout-rooms/random',
     requireTeacher,
     async (req, res) => {
       try {
-        const { lobbyId } = req.params;
-        const { roomCount } = req.body ?? {};
+        const { id } = req.params;
+        const { roomCount } = req.body || {};
+
+        if (!UUID_PATTERN.test(id)) {
+          return res.status(400).json({
+            error: 'Invalid lobbyId',
+          });
+        }
 
         if (!Number.isInteger(roomCount) || roomCount < 1) {
           return res.status(400).json({
@@ -18,30 +32,51 @@ function createRandomBreakoutRoutes({ db, requireTeacher }) {
           });
         }
 
-        const lobbyRef = db.collection('Lobbies').doc(lobbyId);
-        const lobbySnapshot = await lobbyRef.get();
+        // Get the lobby and its class.
+        const lobby = throwOnError(
+          await supabase
+            .from('lobbies')
+            .select('lobby_id, class_id')
+            .eq('lobby_id', id)
+            .maybeSingle()
+        );
 
-        if (!lobbySnapshot.exists) {
+        if (!lobby) {
           return res.status(404).json({
             error: 'Lobby not found',
           });
         }
 
-        const lobby = lobbySnapshot.data();
+        // Make sure the logged-in teacher owns the class.
+        const schoolClass = throwOnError(
+          await supabase
+            .from('classes')
+            .select('teacher_id')
+            .eq('class_id', lobby.class_id)
+            .maybeSingle()
+        );
 
-        // Only the teacher who owns the lobby can randomize its groups.
-        if (lobby.hostId !== req.user.uid) {
+        if (!schoolClass || schoolClass.teacher_id !== req.user.uid) {
           return res.status(403).json({
-            error: 'You do not have permission to manage this lobby',
+            error: 'Forbidden',
           });
         }
 
-        const participantIds = Array.isArray(lobby.participantIds)
-          ? lobby.participantIds
-          : [];
+        // Get the students currently active in the lobby.
+        const participants = throwOnError(
+          await supabase
+            .from('lobby_participants')
+            .select('student_id')
+            .eq('lobby_id', lobby.lobby_id)
+            .eq('status', 'active')
+        );
+
+        const studentIds = participants.map(
+          ({ student_id }) => student_id
+        );
 
         const rooms = createRandomBreakoutRooms(
-          participantIds,
+          studentIds,
           roomCount
         );
 
