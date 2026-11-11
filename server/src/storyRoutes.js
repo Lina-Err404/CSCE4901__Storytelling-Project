@@ -3,8 +3,25 @@ const { getSupabaseClient } = require('./supabase');
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_WRITING_LENGTH = 50000;
+const MAX_WRITING_DOCUMENT_BYTES = 80 * 1024;
+const MAX_WRITING_RUNS = 5000;
 const MAX_DRAWING_BYTES = 80 * 1024;
 const MAX_DRAWING_SHAPES = 500;
+const DEFAULT_TEXT_BOX_SIZE = { widthPercent: 86, heightPercent: 77 };
+const ALLOWED_FONT_FAMILIES = new Set([
+  'Arial',
+  'Arial Black',
+  'Calibri',
+  'Cambria',
+  'Comic Sans MS',
+  'Courier New',
+  'Georgia',
+  'Helvetica',
+  'Impact',
+  'Times New Roman',
+  'Trebuchet MS',
+  'Verdana',
+]);
 
 function httpError(status, message) {
   return Object.assign(new Error(message), { status, expose: true });
@@ -103,6 +120,86 @@ function validDrawingData(drawingData) {
   return Buffer.byteLength(JSON.stringify(drawingData), 'utf8') <= MAX_DRAWING_BYTES;
 }
 
+function textFromWritingDocument(writingDocument) {
+  return writingDocument.runs.map(({ text }) => text).join('');
+}
+
+function plainWritingDocument(text) {
+  return {
+    version: 1,
+    runs: text ? [{ text, marks: {} }] : [],
+  };
+}
+
+function validWritingDocument(writingDocument) {
+  if (
+    !writingDocument ||
+    typeof writingDocument !== 'object' ||
+    Array.isArray(writingDocument) ||
+    writingDocument.version !== 1 ||
+    !Array.isArray(writingDocument.runs) ||
+    writingDocument.runs.length > MAX_WRITING_RUNS ||
+    Object.keys(writingDocument).some((key) => !['version', 'runs'].includes(key))
+  ) {
+    return false;
+  }
+
+  let textLength = 0;
+  for (const run of writingDocument.runs) {
+    if (
+      !run ||
+      typeof run !== 'object' ||
+      Array.isArray(run) ||
+      Object.keys(run).some((key) => !['text', 'marks'].includes(key)) ||
+      typeof run.text !== 'string' ||
+      !run.marks ||
+      typeof run.marks !== 'object' ||
+      Array.isArray(run.marks) ||
+      Object.keys(run.marks).some((key) => ![
+        'bold',
+        'italic',
+        'underline',
+        'fontFamily',
+        'fontSize',
+      ].includes(key))
+    ) {
+      return false;
+    }
+
+    textLength += run.text.length;
+    if (textLength > MAX_WRITING_LENGTH) return false;
+
+    const { bold, italic, underline, fontFamily, fontSize } = run.marks;
+    if ([bold, italic, underline].some((value) => value !== undefined && typeof value !== 'boolean')) {
+      return false;
+    }
+    if (fontFamily !== undefined && !ALLOWED_FONT_FAMILIES.has(fontFamily)) return false;
+    if (
+      fontSize !== undefined &&
+      (!Number.isInteger(fontSize) || fontSize < 8 || fontSize > 72)
+    ) {
+      return false;
+    }
+  }
+
+  return Buffer.byteLength(JSON.stringify(writingDocument), 'utf8') <= MAX_WRITING_DOCUMENT_BYTES;
+}
+
+function validTextBoxSize(textBoxSize) {
+  return Boolean(
+    textBoxSize &&
+    typeof textBoxSize === 'object' &&
+    !Array.isArray(textBoxSize) &&
+    Object.keys(textBoxSize).length === 2 &&
+    Number.isFinite(textBoxSize.widthPercent) &&
+    Number.isFinite(textBoxSize.heightPercent) &&
+    textBoxSize.widthPercent >= 10 &&
+    textBoxSize.widthPercent <= 100 &&
+    textBoxSize.heightPercent >= 10 &&
+    textBoxSize.heightPercent <= 100
+  );
+}
+
 function createStoryRouter({ requireStudent, getSupabase = getSupabaseClient }) {
   const router = express.Router();
 
@@ -115,7 +212,7 @@ function createStoryRouter({ requireStudent, getSupabase = getSupabaseClient }) 
     const story = await requireRoomMembership(supabase, storyId, profile.id);
     const segments = await getData(supabase
       .from('story_segments')
-      .select('segment_id, section, section_order, segment_title, writing_content, student_id, updated_at')
+      .select('segment_id, section, section_order, segment_title, writing_content, writing_document, text_box_size, student_id, updated_at')
       .eq('story_id', storyId)
       .order('section_order', { ascending: true }));
     const segmentRows = segments || [];
@@ -141,6 +238,8 @@ function createStoryRouter({ requireStudent, getSupabase = getSupabaseClient }) 
         sectionOrder: segment.section_order,
         title: segment.segment_title,
         writingContent: segment.writing_content,
+        writingDocument: segment.writing_document || plainWritingDocument(segment.writing_content || ''),
+        textBoxSize: segment.text_box_size || DEFAULT_TEXT_BOX_SIZE,
         drawingData: drawingsBySegment.get(segment.segment_id) || null,
         assignedToYou: segment.student_id === profile.id,
         updatedAt: segment.updated_at,
@@ -150,27 +249,63 @@ function createStoryRouter({ requireStudent, getSupabase = getSupabaseClient }) 
 
   router.put('/story-segments/:segmentId', requireStudent, asyncRoute(async (req, res) => {
     const { segmentId } = req.params;
-    const writingContent = req.body?.writingContent;
+    const body = req.body;
+    const hasWritingContent = body && Object.prototype.hasOwnProperty.call(body, 'writingContent');
+    const hasWritingDocument = body && Object.prototype.hasOwnProperty.call(body, 'writingDocument');
+    const hasTextBoxSize = body && Object.prototype.hasOwnProperty.call(body, 'textBoxSize');
     if (!UUID_PATTERN.test(segmentId)) throw httpError(400, 'Invalid segmentId');
-    if (typeof writingContent !== 'string' || writingContent.length > MAX_WRITING_LENGTH) {
+    if (!body || typeof body !== 'object' || Array.isArray(body) ||
+      (!hasWritingContent && !hasWritingDocument && !hasTextBoxSize)) {
+      throw httpError(400, 'Provide writingContent, writingDocument, or textBoxSize');
+    }
+
+    if (hasWritingContent && (
+      typeof body.writingContent !== 'string' ||
+      body.writingContent.length > MAX_WRITING_LENGTH
+    )) {
       throw httpError(400, `writingContent must be a string of at most ${MAX_WRITING_LENGTH} characters`);
     }
+
+    if (hasWritingDocument && !validWritingDocument(body.writingDocument)) {
+      throw httpError(400, 'writingDocument must be version 1 with valid runs and marks, at most 50,000 text characters, and at most 80 KB');
+    }
+
+    if (hasTextBoxSize && !validTextBoxSize(body.textBoxSize)) {
+      throw httpError(400, 'textBoxSize must contain widthPercent and heightPercent values from 10 to 100');
+    }
+
+    if (hasWritingDocument && hasWritingContent &&
+      textFromWritingDocument(body.writingDocument) !== body.writingContent) {
+      throw httpError(400, 'writingContent must match the text in writingDocument');
+    }
+
+    const updates = { updated_at: new Date().toISOString() };
+    if (hasWritingDocument) {
+      updates.writing_document = body.writingDocument;
+      updates.writing_content = textFromWritingDocument(body.writingDocument);
+    } else if (hasWritingContent) {
+      updates.writing_content = body.writingContent;
+      updates.writing_document = plainWritingDocument(body.writingContent);
+    }
+    if (hasTextBoxSize) updates.text_box_size = body.textBoxSize;
 
     const supabase = getSupabase();
     const profile = await getStudentProfile(supabase, req.user.uid);
     await getOwnedSegment(supabase, segmentId, profile.id);
     const saved = await getData(supabase
       .from('story_segments')
-      .update({ writing_content: writingContent, updated_at: new Date().toISOString() })
+      .update(updates)
       .eq('segment_id', segmentId)
       .eq('student_id', profile.id)
-      .select('segment_id, writing_content, updated_at')
+      .select('segment_id, writing_content, writing_document, text_box_size, updated_at')
       .maybeSingle());
     if (!saved) throw httpError(409, 'Section assignment changed; reload the story');
 
     return res.json({
       segmentId: saved.segment_id,
       writingContent: saved.writing_content,
+      writingDocument: saved.writing_document || plainWritingDocument(saved.writing_content || ''),
+      textBoxSize: saved.text_box_size || DEFAULT_TEXT_BOX_SIZE,
       updatedAt: saved.updated_at,
     });
   }));

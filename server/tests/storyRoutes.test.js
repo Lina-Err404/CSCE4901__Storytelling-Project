@@ -136,6 +136,8 @@ function seedData() {
         section_order: 1,
         segment_title: 'The discovery',
         writing_content: 'A draft',
+        writing_document: { version: 1, runs: [{ text: 'A draft', marks: {} }] },
+        text_box_size: { widthPercent: 86, heightPercent: 77 },
         updated_at: '2026-11-06T12:00:00.000Z',
       },
       {
@@ -146,6 +148,8 @@ function seedData() {
         section_order: 2,
         segment_title: 'The return',
         writing_content: '',
+        writing_document: { version: 1, runs: [] },
+        text_box_size: { widthPercent: 86, heightPercent: 77 },
         updated_at: '2026-11-06T12:00:00.000Z',
       },
     ],
@@ -187,6 +191,8 @@ describe('Supabase-backed story routes', () => {
     expect(response.body.segments[0]).toMatchObject({
       segmentId: SEGMENT_ID,
       writingContent: 'A draft',
+      writingDocument: { version: 1, runs: [{ text: 'A draft', marks: {} }] },
+      textBoxSize: { widthPercent: 86, heightPercent: 77 },
       drawingData: { version: 1, shapes: [{ type: 'circle' }] },
       assignedToYou: true,
     });
@@ -211,6 +217,74 @@ describe('Supabase-backed story routes', () => {
       .send({ writingContent: 'Attempt to edit another section' });
     expect(forbidden.status).toBe(403);
     expect(supabase.tables.story_segments[1].writing_content).toBe('');
+  });
+
+  test('saves and reloads rich-text formatting and textbox dimensions', async () => {
+    const supabase = createSupabaseMock(seedData());
+    const app = createApp(supabase);
+    const writingDocument = {
+      version: 1,
+      runs: [
+        { text: 'Styled ', marks: { bold: true, fontFamily: 'Georgia', fontSize: 18 } },
+        { text: 'phrase', marks: { italic: true, underline: true } },
+      ],
+    };
+    const textBoxSize = { widthPercent: 72, heightPercent: 64 };
+
+    const saved = await request(app)
+      .put(`/story-segments/${SEGMENT_ID}`)
+      .send({ writingDocument, textBoxSize });
+
+    expect(saved.status).toBe(200);
+    expect(saved.body).toMatchObject({
+      writingContent: 'Styled phrase',
+      writingDocument,
+      textBoxSize,
+    });
+
+    const reloaded = await request(app).get(`/stories/${STORY_ID}`);
+    expect(reloaded.body.segments[0]).toMatchObject({ writingDocument, textBoxSize });
+    expect(supabase.tables.story_segments[0]).toMatchObject({
+      writing_content: 'Styled phrase',
+      writing_document: writingDocument,
+      text_box_size: textBoxSize,
+    });
+  });
+
+  test('rejects invalid rich text and textbox dimensions', async () => {
+    const app = createApp(createSupabaseMock(seedData()));
+    const invalidDocuments = [
+      { version: 2, runs: [] },
+      { version: 1, runs: [{ text: 'x', marks: { fontSize: 100 } }] },
+      { version: 1, runs: [{ text: 'x', marks: { fontFamily: 'expression(alert(1))' } }] },
+      { version: 1, runs: [{ text: 'x', marks: { strike: true } }] },
+    ];
+
+    for (const writingDocument of invalidDocuments) {
+      const response = await request(app)
+        .put(`/story-segments/${SEGMENT_ID}`)
+        .send({ writingDocument });
+      expect(response.status).toBe(400);
+    }
+
+    const invalidSize = await request(app)
+      .put(`/story-segments/${SEGMENT_ID}`)
+      .send({ textBoxSize: { widthPercent: 120, heightPercent: 50 } });
+    expect(invalidSize.status).toBe(400);
+  });
+
+  test('keeps legacy plain-text saves compatible with rich-text persistence', async () => {
+    const supabase = createSupabaseMock(seedData());
+    const response = await request(createApp(supabase))
+      .put(`/story-segments/${SEGMENT_ID}`)
+      .send({ writingContent: 'Plain text\ncontinues' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.writingDocument).toEqual({
+      version: 1,
+      runs: [{ text: 'Plain text\ncontinues', marks: {} }],
+    });
+    expect(supabase.tables.story_segments[0].writing_content).toBe('Plain text\ncontinues');
   });
 
   test('rejects story reads for students outside the breakout room', async () => {
