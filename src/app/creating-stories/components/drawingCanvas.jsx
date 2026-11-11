@@ -8,7 +8,7 @@ import { regionFromImage, subtractRegion, eraseFills, tidyFill } from "./fillToo
 export const BRUSH_SIZES = [4, 7, 10, 13, 16]
 
 const newId = () => Array.from({ length: 8 }, () => "abcdefghijklmnopqrstuvwxyz0123456789"[(Math.random() * 36) | 0]).join("")
-const emptyDocument = () => ({ version: 1, canvas: { width: 1000, height: 750 }, strokes: [], fills: [] })
+const emptyDocument = () => ({ version: 1, canvas: { width: 1000, height: 750 }, strokes: [], fills: [], stamps: [] })
 const num = (v, d) => (typeof v === "number" && Number.isFinite(v) ? v : d)
 const oneOf = (v, list) => (list.includes(v) ? v : list[0])
 
@@ -52,6 +52,9 @@ const fillToJSON = (f) => ({
     id: f.id,
     color: f.color,
     ...(f.opacity !== 1 && { opacity: f.opacity }),
+    ...(f.back && { back: true }),
+    ...(f.above && { above: f.above }),
+    ...(f.z && { z: f.z }),
     polygons: f.poly.map((polygon) => polygon.map((ring) => encodePoints(openRing(ring)))),
 })
 
@@ -70,7 +73,119 @@ const fillFromJSON = (f, unit) => {
         .filter((rings) => rings[0])
         .map(([outer, ...holes]) => [outer, ...holes.filter(Boolean)])
     if (!poly.length) return null
-    return { id: f.id, color: typeof f.color === "string" ? f.color : "#000000", opacity: Math.min(1, Math.max(0, num(f.opacity, 1))), poly }
+    const above = typeof f.above === "string" && f.above.length <= 40 ? f.above : undefined
+    return { id: f.id, color: typeof f.color === "string" ? f.color : "#000000", opacity: Math.min(1, Math.max(0, num(f.opacity, 1))), poly, back: f.back === true || !above, above, z: num(f.z, 0) }
+}
+
+// stamps and shapes
+
+// Shapes are drawn inside a box that gets stretched to the stamp's width and height
+const poly = (pts) => [...pts.map(([x, y], i) => [i ? "L" : "M", x, y]), ["Z"]]
+
+const STAR = (() => {
+    const raw = []
+    for (let i = 0; i < 10; i++) {
+        const r = i % 2 ? 0.4 : 1
+        const a = -Math.PI / 2 + (i * Math.PI) / 5
+        raw.push([Math.cos(a) * r, Math.sin(a) * r])
+    }
+    const xs = raw.map((p) => p[0])
+    const ys = raw.map((p) => p[1])
+    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)]
+    return poly(raw.map(([x, y]) => [(x - x0) / (x1 - x0), (y - y0) / (y1 - y0)]))
+})()
+
+const H = 0.2762 // bezier handle length that makes four curves into a circle
+const ELLIPSE = [
+    ["M", 0.5, 0],
+    ["C", 0.5 + H, 0, 1, 0.5 - H, 1, 0.5],
+    ["C", 1, 0.5 + H, 0.5 + H, 1, 0.5, 1],
+    ["C", 0.5 - H, 1, 0, 0.5 + H, 0, 0.5],
+    ["C", 0, 0.5 - H, 0.5 - H, 0, 0.5, 0],
+    ["Z"],
+]
+
+const HEART = [
+    ["M", 0.5, 1],
+    ["C", 0.12, 0.72, 0, 0.5, 0, 0.28],
+    ["C", 0, 0.12, 0.12, 0, 0.27, 0],
+    ["C", 0.38, 0, 0.46, 0.06, 0.5, 0.16],
+    ["C", 0.54, 0.06, 0.62, 0, 0.73, 0],
+    ["C", 0.88, 0, 1, 0.12, 1, 0.28],
+    ["C", 1, 0.5, 0.88, 0.72, 0.5, 1],
+    ["Z"],
+]
+
+// ratio = height / width when first placed, width is optional
+const SHAPES = {
+    rectangle: { label: "rectangle", ratio: 0.7, path: poly([[0, 0], [1, 0], [1, 1], [0, 1]]) },
+    ellipse: { label: "circle", ratio: 1, path: ELLIPSE },
+    triangle: { label: "triangle", ratio: 0.87, path: poly([[0.5, 0], [1, 1], [0, 1]]) },
+    diamond: { label: "diamond", ratio: 1, path: poly([[0.5, 0], [1, 0.5], [0.5, 1], [0, 0.5]]) },
+    star: { label: "star", ratio: 0.95, path: STAR },
+    heart: { label: "heart", ratio: 0.92, path: HEART },
+    arrow: { label: "arrow", ratio: 0.5, path: poly([[0, 0.3], [0.6, 0.3], [0.6, 0], [1, 0.5], [0.6, 1], [0.6, 0.7], [0, 0.7]]) },
+    line: { label: "line", ratio: 0.04, width: 360, path: poly([[0, 0], [1, 0], [1, 1], [0, 1]]) },
+}
+const SHAPE_IDS = Object.keys(SHAPES)
+
+const svgPath = (path) => path.map((cmd) => cmd.join(" ")).join(" ")
+
+// what the stamp panel needs to draw its shape buttons
+export const SHAPE_LIST = SHAPE_IDS.map((id) => ({ id, label: SHAPES[id].label, ratio: SHAPES[id].ratio, svgPath: svgPath(SHAPES[id].path) }))
+
+function traceShape(ctx, path, w, h) {
+    ctx.beginPath()
+    for (const [op, ...a] of path) {
+        if (op === "M") ctx.moveTo(a[0] * w, a[1] * h)
+        else if (op === "L") ctx.lineTo(a[0] * w, a[1] * h)
+        else if (op === "C") ctx.bezierCurveTo(a[0] * w, a[1] * h, a[2] * w, a[3] * h, a[4] * w, a[5] * h)
+        else ctx.closePath()
+    }
+}
+
+const MIN_STAMP = 8
+const MAX_STAMP = 4000
+const MAX_STAMPS = 300
+
+// only images from the app's own images are loaded
+const isStampSrc = (v) => typeof v === "string" && /^\/images\/[\w-]+\/[\w\-. ]+$/.test(v) && !v.includes("..")
+
+const stampToJSON = (s) => ({
+    id: s.id,
+    kind: s.kind,
+    ...(s.kind === "image" ? { src: s.src } : { shape: s.shape, color: s.color }),
+    x: tenth(s.x),
+    y: tenth(s.y),
+    width: tenth(s.width),
+    height: tenth(s.height),
+    ...(s.rotation && { rotation: tenth(s.rotation) }),
+    ...(s.opacity !== 1 && { opacity: s.opacity }),
+    ...(s.back && { back: true }),
+    ...(s.above && { above: s.above }),
+    ...(s.category && { category: s.category }),
+    ...(s.z && { z: s.z }),
+})
+
+const stampFromJSON = (s) => {
+    if (!s || typeof s.id !== "string") return null
+    const size = (v) => Math.min(MAX_STAMP, Math.max(MIN_STAMP, num(v, 100)))
+    const base = {
+        id: s.id,
+        x: num(s.x, 0),
+        y: num(s.y, 0),
+        width: size(s.width),
+        height: size(s.height),
+        rotation: num(s.rotation, 0),
+        opacity: Math.min(1, Math.max(0, num(s.opacity, 1))),
+        back: s.back === true,
+        z: num(s.z, 0),
+        ...(typeof s.above === "string" && s.above.length <= 40 && { above: s.above }),
+        ...(typeof s.category === "string" && /^[\w-]{1,40}$/.test(s.category) && { category: s.category }),
+    }
+    if (s.kind === "image") return isStampSrc(s.src) ? { ...base, kind: "image", src: s.src } : null
+    if (s.kind === "shape" && SHAPE_IDS.includes(s.shape)) return { ...base, kind: "shape", shape: s.shape, color: typeof s.color === "string" ? s.color : "#000000" }
+    return null
 }
 
 export function documentToJSON(doc) {
@@ -93,6 +208,7 @@ export function documentToJSON(doc) {
             ...(s.cutEnd && { cutEnd: true }),
         })),
         ...(doc.fills.length && { fills: doc.fills.map(fillToJSON) }),
+        ...(doc.stamps.length && { stamps: doc.stamps.map(stampToJSON) }),
     }
 }
 
@@ -140,6 +256,7 @@ export function documentFromJSON(raw) {
             brush: oneOf(s.brush, ["pencil", "spray", "eraser"]),
         })),
         fills: raw.version === 2 && Array.isArray(raw.fills) ? raw.fills.map((f) => fillFromJSON(f, unit)).filter(Boolean) : [],
+        stamps: raw.version === 2 && Array.isArray(raw.stamps) ? raw.stamps.slice(0, MAX_STAMPS).map(stampFromJSON).filter(Boolean) : [],
     }
 }
 
@@ -201,15 +318,61 @@ const covers = (s, x, y, slack) => {
     return false
 }
 
-// index of the stroke you can see at (x, y)
-function visibleStrokeAt(strokes, x, y) {
-    const erasers = []
-    for (let i = strokes.length - 1; i >= 0; i--) {
-        const s = strokes[i]
-        if (s.brush === "eraser") erasers.push(s)
-        else if (covers(s, x, y, 0.5) && !erasers.some((e) => covers(e, x, y, 0))) return i
+// point in a stamp's own frame
+function stampLocal(s, x, y) {
+    const a = (-s.rotation * Math.PI) / 180
+    const [dx, dy] = [x - s.x, y - s.y]
+    return [dx * Math.cos(a) - dy * Math.sin(a), dx * Math.sin(a) + dy * Math.cos(a)]
+}
+
+let probe = null
+const probeCtx = () => (probe ??= document.createElement("canvas").getContext("2d", { willReadFrequently: true }))
+
+// check if the stamp is under (x, y)
+function stampHit(s, x, y) {
+    const [lx, ly] = stampLocal(s, x, y)
+    if (lx < 0 || ly < 0 || lx > s.width || ly > s.height) return false
+    const ctx = probeCtx()
+    if (s.kind === "shape") {
+        ctx.beginPath()
+        traceShape(ctx, SHAPES[s.shape].path, s.width, s.height)
+        return ctx.isPointInPath(lx, ly)
     }
-    return -1
+    const img = loadedStampImage(s.src)
+    if (!img) return false
+    ctx.canvas.width = 1
+    ctx.canvas.height = 1
+    ctx.drawImage(img, -lx, -ly, s.width, s.height)
+    return ctx.getImageData(0, 0, 1, 1).data[3] > 40
+}
+
+function fillHit(f, x, y) {
+    const ctx = probeCtx()
+    traceFill(ctx, f)
+    return ctx.isPointInPath(x, y)
+}
+
+// What you can see at (x, y), looking down from the top of the stacking order
+function topAt(doc, x, y) {
+    const items = interleave(doc.strokes, doc.stamps, doc.fills)
+    const erasers = []
+    const erased = () => erasers.some((e) => covers(e, x, y, 0))
+    for (let i = items.length - 1; i >= 0; i--) {
+        const item = items[i]
+        if (item.group) {
+            const list = item.group.strokes
+            for (let k = list.length - 1; k >= 0; k--) {
+                const s = list[k]
+                if (s.brush === "eraser") erasers.push(s)
+                else if (covers(s, x, y, 0.5) && !erased()) return { stroke: s }
+            }
+        } else if (item.fill) {
+            if (!erased() && fillHit(item.fill, x, y)) return { fill: item.fill }
+        } else if (!erased() && stampHit(item.stamp, x, y)) {
+            return item.stamp.kind === "shape" ? { stamp: item.stamp } : { image: item.stamp }
+        }
+    }
+    return null
 }
 
 // check if there's any drawing near the eraser's path
@@ -223,6 +386,19 @@ function touchesInk(strokes, x0, y0, x1, y1, r) {
     })
 }
 
+// does the eraser's path come near a stamp
+function touchesStamps(stamps, x0, y0, x1, y1, r) {
+    return stamps.some((s) => {
+        const a = (-s.rotation * Math.PI) / 180
+        const [cos, sin] = [Math.cos(a), Math.sin(a)]
+        return [[x0, y0], [x1, y1]].some(([px, py]) => {
+            const lx = (px - s.x) * cos - (py - s.y) * sin
+            const ly = (px - s.x) * sin + (py - s.y) * cos
+            return lx >= -r && lx <= s.width + r && ly >= -r && ly <= s.height + r
+        })
+    })
+}
+
 // undo / redo
 
 const replaceStrokes = (strokes, remove, insert) => {
@@ -233,6 +409,21 @@ const replaceStrokes = (strokes, remove, insert) => {
 }
 
 const indexed = (list, skip) => list.map((stroke, index) => ({ stroke, index })).filter((x) => !skip.has(x.stroke.id))
+
+// The fill helpers hand back new fill objects, so make sure each one keeps its place in the stacking order
+const keepStacking = (olds, news) => {
+    const byId = new Map(olds.map((f) => [f.id, f]))
+    return news.map((f) => {
+        const old = f && byId.get(f.id)
+        return old && old !== f ? { ...f, back: old.back, above: old.above, z: old.z } : f
+    })
+}
+
+// where something put on the page right now goes
+const stackingNow = (strokes) => {
+    const top = strokes[strokes.length - 1]
+    return top ? { back: false, above: top.src ?? top.id } : { back: true }
+}
 
 export class DrawingEditor {
     doc = emptyDocument()
@@ -263,12 +454,13 @@ export class DrawingEditor {
     }
 
     // strokes are tracked by what was removed / added
-    record(before, after, fillsBefore = this.doc.fills, fillsAfter = this.doc.fills) {
+    record(before, after, fillsBefore = this.doc.fills, fillsAfter = this.doc.fills, stampsBefore = this.doc.stamps, stampsAfter = this.doc.stamps) {
         const removed = indexed(before, new Set(after.map((s) => s.id)))
         const added = indexed(after, new Set(before.map((s) => s.id)))
         const fillsChanged = fillsBefore !== fillsAfter
-        if (!removed.length && !added.length && !fillsChanged) return
-        this.pushOp({ removed, added, ...(fillsChanged && { fills: [fillsBefore, fillsAfter] }) })
+        const stampsChanged = stampsBefore !== stampsAfter
+        if (!removed.length && !added.length && !fillsChanged && !stampsChanged) return
+        this.pushOp({ removed, added, ...(fillsChanged && { fills: [fillsBefore, fillsAfter] }), ...(stampsChanged && { stamps: [stampsBefore, stampsAfter] }) })
     }
 
     pushOp(op) {
@@ -289,7 +481,7 @@ export class DrawingEditor {
     beginErase(radius, x, y) {
         this.endGesture()
         const eraser = { id: newId(), points: [x, y, x, y], width: radius * 2, color: "#000000", opacity: 1, lineCap: "round", lineJoin: "round", brush: "eraser" }
-        this.gesture = { kind: "erase", radius, ink: false, before: this.doc.strokes, fills: this.doc.fills }
+        this.gesture = { kind: "erase", radius, ink: false, before: this.doc.strokes, fills: this.doc.fills, stamps: this.doc.stamps }
         this.doc.strokes = [...this.doc.strokes, eraser]
         this.sweep(x, y, x, y)
         this.emit()
@@ -298,8 +490,8 @@ export class DrawingEditor {
     // the eraser moved from (x0, y0) to (x1, y1)
     sweep(x0, y0, x1, y1) {
         const g = this.gesture
-        this.doc.fills = eraseFills(this.doc.fills, x0, y0, x1, y1, g.radius)
-        if (!g.ink) g.ink = touchesInk(g.before, x0, y0, x1, y1, g.radius)
+        this.doc.fills = keepStacking(this.doc.fills, eraseFills(this.doc.fills, x0, y0, x1, y1, g.radius))
+        if (!g.ink) g.ink = touchesInk(g.before, x0, y0, x1, y1, g.radius) || touchesStamps(g.stamps, x0, y0, x1, y1, g.radius)
     }
 
     pointerMove(x, y) {
@@ -328,24 +520,39 @@ export class DrawingEditor {
         if (g.kind === "erase" && this.doc.fills !== g.fills) {
             // fills the eraser cut: smooth the polygon and drop tiny leftovers
             const oldFills = new Set(g.fills)
-            this.doc.fills = this.doc.fills.map((f) => (oldFills.has(f) ? f : tidyFill(f))).filter(Boolean)
+            this.doc.fills = this.doc.fills.map((f) => (oldFills.has(f) ? f : keepStacking([f], [tidyFill(f)])[0])).filter(Boolean)
         }
         this.record(g.before, this.doc.strokes, g.fills, this.doc.fills)
         this.emit()
     }
 
-    // paint bucket
+    // z for the next stamp or fill, higher than all the ones there are, or lower than all of them
+    nextZ() {
+        return 1 + Math.max(0, ...this.doc.stamps.map((s) => s.z ?? 0), ...this.doc.fills.map((f) => f.z ?? 0))
+    }
+
+    lowestZ() {
+        return Math.min(0, ...this.doc.stamps.map((s) => s.z ?? 0), ...this.doc.fills.map((f) => f.z ?? 0)) - 1
+    }
+
+    // paint bucket colours the line or shape you can see under the click, otherwise fills the closed area
     fill(style, x, y) {
         this.endGesture()
         const strokes = this.doc.strokes
-        const hit = visibleStrokeAt(strokes, x, y)
-        if (hit !== -1) return this.recolor(hit, x, y, style)
+        const hit = topAt(this.doc, x, y)
+        if (hit?.stroke) return this.recolor(strokes.indexOf(hit.stroke), x, y, style)
+        if (hit?.stamp) {
+            if (hit.stamp.color === style.color && hit.stamp.opacity === style.opacity) return false
+            this.updateStamp(hit.stamp.id, { color: style.color, opacity: style.opacity })
+            return true
+        }
 
         const { rgba, ink } = renderPage(this.doc)
         const region = regionFromImage(rgba, ink, this.doc.canvas.width, this.doc.canvas.height, x, y)
         if (!region) return false
         const before = this.doc.fills
-        this.doc.fills = [...subtractRegion(before, region), { id: newId(), color: style.color, opacity: style.opacity, poly: region }]
+        const made = { id: newId(), color: style.color, opacity: style.opacity, poly: region, ...stackingNow(strokes), z: this.nextZ() }
+        this.doc.fills = [...keepStacking(before, subtractRegion(before, region)), made]
         this.record(strokes, strokes, before, this.doc.fills)
         this.emit()
         return true
@@ -389,12 +596,68 @@ export class DrawingEditor {
         return true
     }
 
+    // stamps and shapes
+    addStamp(stamp) {
+        this.endGesture()
+        const before = this.doc.stamps
+        this.doc.stamps = [...before, stamp]
+        this.record(this.doc.strokes, this.doc.strokes, this.doc.fills, this.doc.fills, before, this.doc.stamps)
+        this.emit()
+    }
+
+    updateStamp(id, patch, merge = false) {
+        this.endGesture()
+        const before = this.doc.stamps
+        if (!before.some((s) => s.id === id)) return
+        const after = before.map((s) => (s.id === id ? { ...s, ...patch } : s))
+        this.doc.stamps = after
+        const top = this.undoStack[this.undoStack.length - 1]
+        if (merge && top?.edit === id && Date.now() - top.at < 1500) {
+            top.stamps[1] = after
+            top.at = Date.now()
+            this.redoStack = []
+        } else {
+            this.pushOp({ removed: [], added: [], stamps: [before, after], edit: id, at: Date.now() })
+        }
+        this.emit()
+    }
+
+    // to back is underneath all the drawing. To front is over everything drawn so far
+    restack(id) {
+        this.endGesture()
+        const before = this.doc.stamps
+        const stamp = before.find((s) => s.id === id)
+        if (!stamp) return
+        let after
+        if (!stamp.back) {
+            const { above, ...plain } = stamp
+            after = before.map((s) => (s.id === id ? { ...plain, back: true, z: this.lowestZ() } : s))
+        } else {
+            const top = this.doc.strokes[this.doc.strokes.length - 1]
+            if (!top) return // nothing drawn yet to be in front of
+            after = before.map((s) => (s.id === id ? { ...s, back: false, above: top.src ?? top.id, z: this.nextZ() } : s))
+        }
+        this.doc.stamps = after
+        this.record(this.doc.strokes, this.doc.strokes, this.doc.fills, this.doc.fills, before, after)
+        this.emit()
+    }
+
+    removeStamp(id) {
+        this.endGesture()
+        const before = this.doc.stamps
+        if (!before.some((s) => s.id === id)) return
+        this.doc.stamps = before.filter((s) => s.id !== id)
+        this.record(this.doc.strokes, this.doc.strokes, this.doc.fills, this.doc.fills, before, this.doc.stamps)
+        this.emit()
+    }
+
     step(from, to, forward) {
         if (this.gesture || !from.length) return
         const op = from.pop()
         const [remove, insert] = forward ? [op.removed, op.added] : [op.added, op.removed]
         if (remove.length || insert.length) this.doc.strokes = replaceStrokes(this.doc.strokes, remove, insert)
         if (op.fills) this.doc.fills = op.fills[forward ? 1 : 0]
+        if (op.stamps) this.doc.stamps = op.stamps[forward ? 1 : 0]
         to.push(op)
         this.emit()
     }
@@ -411,9 +674,11 @@ export class DrawingEditor {
         if (this.gesture) return
         const before = this.doc.strokes
         const fillsBefore = this.doc.fills
+        const stampsBefore = this.doc.stamps
         this.doc.strokes = []
         this.doc.fills = []
-        this.record(before, [], fillsBefore, [])
+        this.doc.stamps = []
+        this.record(before, [], fillsBefore, [], stampsBefore, [])
         this.emit()
     }
 
@@ -448,7 +713,7 @@ function createStore(initial) {
     }
 }
 
-const toolStore = createStore({ tool: "pencil", color: "#000000", sizeIndex: 2, opacity: 100, ownerIndex: 0 })
+const toolStore = createStore({ tool: "pencil", color: "#000000", sizeIndex: 2, opacity: 100, ownerIndex: 0, selectedId: null, returnTool: "pencil" })
 const snapshotStore = createStore({})
 const editors = new Map()
 
@@ -467,7 +732,16 @@ export const setDrawingOwner = (pageIndex) => toolStore.set({ ownerIndex: pageIn
 const useTools = () => useSyncExternalStore(toolStore.subscribe, toolStore.get, toolStore.get)
 
 const setter = (key) => (value) => toolStore.set((prev) => ({ ...prev, [key]: typeof value === "function" ? value(prev[key]) : value }))
-const [setTool, setColor, setSizeIndex, setOpacity] = ["tool", "color", "sizeIndex", "opacity"].map(setter)
+const [setColor, setSizeIndex, setOpacity] = ["color", "sizeIndex", "opacity"].map(setter)
+
+const setTool = (value) =>
+    toolStore.set((prev) => {
+        const tool = typeof value === "function" ? value(prev.tool) : value
+        return { ...prev, tool, ...(tool !== "select" && { selectedId: null }) }
+    })
+
+const enterSelect = (id) => toolStore.set((prev) => ({ ...prev, tool: "select", selectedId: id, returnTool: prev.tool === "select" ? prev.returnTool : prev.tool }))
+const leaveSelect = () => toolStore.set((prev) => (prev.tool === "select" ? { ...prev, tool: prev.returnTool, selectedId: null } : prev.selectedId ? { ...prev, selectedId: null } : prev))
 
 export function useDrawingTools() {
     const t = useTools()
@@ -481,20 +755,102 @@ export function useDrawingTools() {
         opacity: t.opacity, setOpacity,
         undo: () => owner.undo(),
         redo: () => owner.redo(),
-        clearAll: () => (owner.doc.strokes.length || owner.doc.fills.length) && window.confirm("Delete your whole drawing?") && owner.clear(),
+        clearAll: () => (owner.doc.strokes.length || owner.doc.fills.length || owner.doc.stamps.length) && window.confirm("Delete your whole drawing?") && owner.clear(),
         canUndo: owner.canUndo,
         canRedo: owner.canRedo,
     }
 }
 
+// stamps and shapes
+
+// the type the stamp panel puts on a drag, and the canvas looks for on a drop
+export const STAMP_DRAG = "application/x-stamp"
+
+const imageCache = new Map() // src -> { img, promise }
+
+export function loadStampImage(src) {
+    let entry = imageCache.get(src)
+    if (!entry) {
+        entry = { img: null, promise: null }
+        entry.promise = new Promise((resolve, reject) => {
+            const img = document.createElement("img")
+            img.onload = () => {
+                entry.img = img
+                resolve(img)
+            }
+            img.onerror = () => {
+                imageCache.delete(src)
+                reject(new Error("Could not load " + src))
+            }
+            img.src = src
+        })
+        imageCache.set(src, entry)
+    }
+    return entry.promise
+}
+
+const loadedStampImage = (src) => imageCache.get(src)?.img ?? null
+
+// Puts a stamp on a page
+export async function placeStamp(spec, at = null, index = toolStore.get().ownerIndex) {
+    const { color, opacity } = toolStore.get()
+    const editor = getEditor(index)
+    const { width: cw, height: ch } = editor.doc.canvas
+    const nudge = at ? 0 : (editor.doc.stamps.length % 6) * 24 // so stamps added one after another don't hide each other
+    const [cx, cy] = at ? [Math.min(Math.max(at.x, 0), cw), Math.min(Math.max(at.y, 0), ch)] : [cw / 2 + nudge, ch / 2 + nudge]
+    // placed over whatever is drawn right now, so strokes drawn afterwards go over it. A background or a page with nothing drawn yet sits underneath
+    const stacking = (backdrop) => ({ ...(backdrop ? { back: true } : stackingNow(editor.doc.strokes)), z: editor.nextZ() })
+    let stamp
+    if (spec.kind === "image") {
+        if (!isStampSrc(spec.src)) return false
+        const img = await loadStampImage(spec.src).catch(() => null)
+        if (!img || !img.naturalWidth) return false
+        const backdrop = spec.category === "background" // a background fills the page and sits behind the drawing
+        const fit = Math.min((backdrop ? cw : cw * 0.35) / img.naturalWidth, (backdrop ? ch : ch * 0.45) / img.naturalHeight)
+        const [width, height] = [tenth(img.naturalWidth * fit), tenth(img.naturalHeight * fit)]
+        const [mx, my] = backdrop ? [cw / 2, ch / 2] : [cx, cy]
+        stamp = { id: newId(), kind: "image", src: spec.src, x: tenth(mx - width / 2), y: tenth(my - height / 2), width, height, rotation: 0, opacity: 1, ...stacking(backdrop), ...(backdrop && { category: "background" }) }
+    } else {
+        const def = SHAPES[spec.shape]
+        if (!def) return false
+        const width = def.width ?? 240
+        const height = tenth(width * def.ratio)
+        stamp = { id: newId(), kind: "shape", shape: spec.shape, color, x: tenth(cx - width / 2), y: tenth(cy - height / 2), width, height, rotation: 0, opacity: opacity / 100, ...stacking(false) }
+    }
+    editor.addStamp(stamp)
+    if (stamp.category === "background" || (!at && !stamp.back)) {
+        enterSelect(stamp.id)
+    }
+    return true
+}
+
+export function useStampTools() {
+    const t = useTools()
+    const owner = getEditor(t.ownerIndex)
+    useSyncExternalStore(owner.subscribe, owner.getVersion, owner.getVersion)
+    const selected = owner.doc.stamps.find((s) => s.id === t.selectedId) ?? null
+    return {
+        tool: t.tool, setTool,
+        color: t.color,
+        selected,
+        placeStamp,
+        removeSelected: () => {
+            if (!selected) return
+            owner.removeStamp(selected.id)
+            leaveSelect()
+        },
+        flipLayer: () => selected && owner.restack(selected.id), // behind or in front of the drawing
+    }
+}
+
 // saving to database
 
-const snapshotOf = (editor) => ({ strokes: editor.doc.strokes, fills: editor.doc.fills })
+const snapshotOf = (editor) => ({ strokes: editor.doc.strokes, fills: editor.doc.fills, stamps: editor.doc.stamps })
 
 const isSaved = (index) => {
     const saved = persist.saved[index]
     const doc = getEditor(index).doc
-    return !!saved && saved.strokes === doc.strokes && saved.fills === doc.fills
+    return !!saved && saved.strokes === doc.strokes && saved.fills === doc.fills && saved.stamps === doc.stamps
 }
 
 const persist = { storyId: null, studentIds: [], myIndex: -1, segmentIds: {}, saved: {}, remote: {} }
@@ -541,6 +897,9 @@ export async function saveDrawing(index, makeSegment) {
     return true
 }
 
+// has this student already started on the drawing so a load from the database should not overwrite it
+const started = (editor) => editor.doc.strokes.length || editor.doc.fills.length || editor.doc.stamps.length || editor.canUndo
+
 // read everyone's drawings
 export async function loadDrawings() {
     if (!persist.storyId) return
@@ -565,14 +924,14 @@ export async function loadDrawings() {
         const editor = getEditor(index)
         const raw = JSON.stringify(row.drawing_data)
         if (index === persist.myIndex) {
-            if (editor.doc.strokes.length || editor.doc.fills.length || editor.canUndo) continue
+            if (started(editor)) continue
         } else if (persist.remote[index] === raw) {
             continue // nothing new from this student
         }
         try {
             const doc = await unpackDrawing(row.drawing_data)
             // may have started drawing while this was unpacking
-            if (index === persist.myIndex && (editor.doc.strokes.length || editor.doc.fills.length || editor.canUndo)) continue
+            if (index === persist.myIndex && started(editor)) continue
             editor.load(doc)
             persist.saved[index] = snapshotOf(editor)
             persist.remote[index] = raw
@@ -628,8 +987,7 @@ function addEndCap(ctx, x, y, [ux, uy], w, cap, back) {
     ctx.closePath()
 }
 
-// fill as a polygon drawn underneath all the strokes
-function drawFill(ctx, fill) {
+function traceFill(ctx, fill) {
     ctx.beginPath()
     for (const polygon of fill.poly) {
         for (const ring of polygon) {
@@ -637,9 +995,29 @@ function drawFill(ctx, fill) {
             ctx.closePath()
         }
     }
+}
+
+// a fill is a polygon, drawn at its place in the stacking order
+function drawFill(ctx, fill) {
+    traceFill(ctx, fill)
     ctx.setAttr("globalAlpha", fill.opacity)
     ctx.setAttr("fillStyle", fill.color)
     ctx.fill()
+}
+
+// the same stamp as the Konva scene draws, for the plain canvases used to read the page
+function drawStamp(ctx, s) {
+    ctx.translate(s.x, s.y)
+    ctx.rotate((s.rotation * Math.PI) / 180)
+    ctx.setAttr("globalAlpha", s.opacity)
+    if (s.kind === "shape") {
+        traceShape(ctx, SHAPES[s.shape].path, s.width, s.height)
+        ctx.setAttr("fillStyle", s.color)
+        ctx.fill()
+        return
+    }
+    const img = loadedStampImage(s.src)
+    if (img) ctx.drawImage(img, 0, 0, s.width, s.height)
 }
 
 function drawPencilGroup(ctx, strokes) {
@@ -808,7 +1186,7 @@ function drawBristleGroup(ctx, strokes) {
     }
 }
 
-// rubs out everything drawn before it in the same layer
+// erases everything drawn before it in the same layer
 function drawEraserGroup(ctx, strokes) {
     ctx.setAttr("globalCompositeOperation", "destination-out")
     ctx.setAttr("globalAlpha", 1)
@@ -848,11 +1226,14 @@ function renderPage(doc) {
         ctx.setAttr = (key, value) => { ctx[key] = value }
         return [c, ctx]
     }
-    const [fillCanvas, fillCtx] = make()
-    for (const f of doc.fills) {
-        fillCtx.save()
-        drawFill(fillCtx, f)
-        fillCtx.restore()
+    // everything as it looks, in stacking order
+    const [stackCanvas, stackCtx] = make()
+    for (const item of interleave(doc.strokes, doc.stamps, doc.fills)) {
+        stackCtx.save()
+        if (item.group) drawStrokeGroup(stackCtx, item.group.strokes)
+        else if (item.fill) drawFill(stackCtx, item.fill)
+        else drawStamp(stackCtx, item.stamp)
+        stackCtx.restore()
     }
     const [inkCanvas, inkCtx] = make()
     for (const g of groupStrokes(doc.strokes)) {
@@ -863,8 +1244,7 @@ function renderPage(doc) {
     const [, pageCtx] = make()
     pageCtx.fillStyle = "#ffffff"
     pageCtx.fillRect(0, 0, w, h)
-    pageCtx.drawImage(fillCanvas, 0, 0)
-    pageCtx.drawImage(inkCanvas, 0, 0)
+    pageCtx.drawImage(stackCanvas, 0, 0)
     const inkPixels = inkCtx.getImageData(0, 0, w, h).data
     const ink = new Uint8Array(w * h)
     for (let i = 0; i < ink.length; i++) ink[i] = inkPixels[4 * i + 3]
@@ -1029,28 +1409,153 @@ function splitByPiece(s, piece, style) {
     return out
 }
 
+// Strokes, stamps and fills in the order they are drawn. Ones that share a place go by z
+export function interleave(strokes, stamps, fills = []) {
+    const lastIndex = new Map()
+    strokes.forEach((s, i) => lastIndex.set(s.src ?? s.id, i))
+    const placed = [...stamps.map((stamp) => ({ stamp, f: stamp })), ...fills.map((fill) => ({ fill, f: fill }))].map((p, n) => ({ ...p, n, at: p.f.back ? -1 : lastIndex.has(p.f.above) ? lastIndex.get(p.f.above) : Infinity }))
+    const tier = (p) => (p.f.category === "background" ? 0 : 1)
+    placed.sort((a, b) => tier(a) - tier(b) || (a.f.z ?? 0) - (b.f.z ?? 0) || a.n - b.n)
+    const item = (p) => (p.stamp ? { stamp: p.stamp } : { fill: p.fill })
+    const items = placed.filter((p) => p.at === -1).map(item)
+    let i = 0
+    for (const group of groupStrokes(strokes)) {
+        const end = i + group.strokes.length - 1
+        items.push({ group })
+        for (const p of placed) if (p.at >= i && p.at <= end) items.push(item(p))
+        i = end + 1
+    }
+    for (const p of placed) if (p.at === Infinity) items.push(item(p))
+    return items
+}
+
 const KonvaScene = dynamic(
     () =>
-        import("react-konva").then(({ Stage, Layer, Shape, Circle, Group }) => {
-            function Scene({ width, height, scale, strokes, fills, handlers, fillsRef, layerRef, ringRef, onReady }) {
+        import("react-konva").then(({ Stage, Layer, Shape, Circle, Group, Image, Transformer }) => {
+            function StampImage({ src, onLoaded, nodeRef, ...props }) {
+                const [img, setImg] = useState(() => loadedStampImage(src))
+                useEffect(() => {
+                    let alive = true
+                    loadStampImage(src).then(
+                        (loaded) => {
+                            if (!alive) return
+                            setImg(loaded)
+                            onLoaded()
+                        },
+                        () => { }
+                    )
+                    return () => {
+                        alive = false
+                    }
+                }, [src])
+                return img ? <Image ref={nodeRef} image={img} {...props} /> : null
+            }
+
+            function Scene({ width, height, scale, strokes, fills, stamps, selectedId, interactive, editable, tick, handlers, layerRef, overlayRef, trRef, ringRef, onReady, onStampLoaded, onStampEdit, onStampChange }) {
                 useEffect(onReady, [])
+                const nodes = useRef({}) // stamp id -> its Konva node
+                const setNode = (id) => (node) => {
+                    if (node) nodes.current[id] = node
+                    else delete nodes.current[id]
+                }
+                const selected = stamps.find((s) => s.id === selectedId)
+
+                // the resize / rotate handles follow the selected stamp
+                useEffect(() => {
+                    const tr = trRef.current
+                    if (!tr) return
+                    const node = interactive && selected ? nodes.current[selected.id] : null
+                    tr.nodes(node ? [node] : [])
+                    tr.getLayer()?.batchDraw()
+                }, [selected, interactive, tick])
+
+                // dragging can't carry a stamp's middle off the page, where it could no longer be picked up
+                const keepOnPage = (e) => {
+                    const n = e.target
+                    const r = n.getClientRect({ relativeTo: n.getParent() })
+                    const cx = r.x + r.width / 2
+                    const cy = r.y + r.height / 2
+                    const dx = Math.min(Math.max(cx, 0), width / scale) - cx
+                    const dy = Math.min(Math.max(cy, 0), height / scale) - cy
+                    if (dx || dy) n.position({ x: n.x() + dx, y: n.y() + dy })
+                }
+
+                const common = (s) => ({
+                    id: s.id,
+                    x: s.x,
+                    y: s.y,
+                    width: s.width,
+                    height: s.height,
+                    rotation: s.rotation,
+                    opacity: s.opacity,
+                    // Right-click opens a placed stamp for editing, and while one is open only it responds
+                    listening: editable && (!interactive || s.id === selectedId),
+                    draggable: interactive && (s.id === selectedId || s.category === "background"),
+                    onContextMenu: (e) => {
+                        e.evt.preventDefault()
+                        onStampEdit(s.id)
+                    },
+                    onDragMove: keepOnPage,
+                    onDragEnd: (e) => onStampChange(s.id, { x: tenth(e.target.x()), y: tenth(e.target.y()) }),
+                    // the handles stretch the node with scaleX / scaleY, so turn that into a width and height
+                    onTransformEnd: (e) => {
+                        const n = e.target
+                        const w = Math.max(MIN_STAMP, n.width() * n.scaleX())
+                        const h = Math.max(MIN_STAMP, n.height() * n.scaleY())
+                        n.scaleX(1)
+                        n.scaleY(1)
+                        onStampChange(s.id, { x: tenth(n.x()), y: tenth(n.y()), width: tenth(w), height: tenth(h), rotation: tenth(n.rotation()) })
+                    },
+                })
+
+                const stampNode = (s) => {
+                    if (s.kind === "image") return <StampImage key={s.id} src={s.src} onLoaded={onStampLoaded} nodeRef={setNode(s.id)} {...common(s)} />
+                    const def = SHAPES[s.shape]
+                    return (
+                        <Shape
+                            key={s.id}
+                            ref={setNode(s.id)}
+                            {...common(s)}
+                            fill={s.color}
+                            sceneFunc={(ctx, shape) => {
+                                traceShape(ctx, def.path, s.width, s.height)
+                                ctx.fillStrokeShape(shape)
+                            }}
+                        />
+                    )
+                }
+
+                const isImage = selected?.kind === "image"
                 return (
                     <Stage width={width} height={height} scaleX={scale} scaleY={scale} {...handlers}>
-                        <Layer ref={fillsRef} listening={false}>
-                            {fills.map((f) => (
-                                <Shape key={f.id} sceneFunc={(ctx) => drawFill(ctx, f)} />
-                            ))}
+                        <Layer ref={layerRef}>
+                            {interleave(strokes, stamps, fills).map((item) =>
+                                item.stamp ? (
+                                    stampNode(item.stamp)
+                                ) : item.fill ? (
+                                    <Shape key={item.fill.id} listening={false} sceneFunc={(ctx) => drawFill(ctx, item.fill)} />
+                                ) : (
+                                    <Shape key={item.group.key} listening={false} sceneFunc={(ctx) => drawStrokeGroup(ctx, item.group.strokes)} />
+                                )
+                            )}
                         </Layer>
-                        <Layer ref={layerRef} listening={false}>
-                            {groupStrokes(strokes).map((g) => (
-                                <Shape key={g.key} sceneFunc={(ctx) => drawStrokeGroup(ctx, g.strokes)} />
-                            ))}
-                        </Layer>
-                        <Layer listening={false}>
+                        <Layer ref={overlayRef}>
                             <Group ref={ringRef} visible={false} listening={false}>
                                 <Circle stroke="#ffffff" strokeWidth={3.5 / scale} listening={false} />
                                 <Circle stroke="#1f2a52" strokeWidth={1.5 / scale} listening={false} />
                             </Group>
+                            <Transformer
+                                ref={trRef}
+                                keepRatio={isImage}
+                                enabledAnchors={isImage ? ["top-left", "top-right", "bottom-left", "bottom-right"] : undefined}
+                                rotationSnaps={[0, 90, 180, 270]}
+                                anchorSize={12}
+                                anchorCornerRadius={3}
+                                anchorStroke="#1f2a52"
+                                anchorFill="#ffffff"
+                                borderStroke="#1f2a52"
+                                boundBoxFunc={(oldBox, newBox) => (Math.abs(newBox.width) < 20 || Math.abs(newBox.height) < 20 ? oldBox : newBox)}
+                            />
                         </Layer>
                     </Stage>
                 )
@@ -1071,19 +1576,21 @@ export function DrawingCanvas({ pageIndex, editable = false }) {
     const editor = getEditor(pageIndex)
     const tools = useTools()
     useSyncExternalStore(editor.subscribe, editor.getVersion, editor.getVersion)
-    const { strokes, fills, canvas } = editor.doc
+    const { strokes, fills, stamps, canvas } = editor.doc
     const size = BRUSH_SIZES[tools.sizeIndex]
+    const interactive = editable && tools.tool === "select" // stamps can only be grabbed with the select tool, so they don't get in the way of drawing
 
     const wrapRef = useRef(null)
-    const fillsRef = useRef(null)
     const layerRef = useRef(null)
+    const overlayRef = useRef(null)
+    const trRef = useRef(null)
     const ringRef = useRef(null)
     const drawing = useRef(false)
     const [scale, setScale] = useState(0.7)
     const [ready, setReady] = useState(false)
     const [tick, setTick] = useState(0)
     const latest = useRef({})
-    latest.current = { scale, strokes, fills, pageIndex, end: null }
+    latest.current = { scale, strokes, fills, stamps, pageIndex, end: null }
 
     useEffect(() => {
         const el = wrapRef.current
@@ -1091,7 +1598,7 @@ export function DrawingCanvas({ pageIndex, editable = false }) {
             const fitted = Math.min(el.clientWidth / canvas.width, el.clientHeight / canvas.height)
             const device = (window.devicePixelRatio || 1) * (el.getBoundingClientRect().width / el.clientWidth || 1)
             setScale(fitted)
-            for (const layer of [fillsRef.current, layerRef.current]) {
+            for (const layer of [layerRef, overlayRef].map((r) => r.current)) {
                 if (!layer) continue
                 layer.getCanvas().setPixelRatio(device)
                 layer.batchDraw()
@@ -1110,16 +1617,25 @@ export function DrawingCanvas({ pageIndex, editable = false }) {
     useEffect(() => {
         if (drawing.current || !ready) return
         const id = requestAnimationFrame(() => {
-            const { scale: s, strokes: list, fills: filled, pageIndex: page } = latest.current
+            const { scale: s, strokes: list, fills: filled, stamps: placed, pageIndex: page } = latest.current
             const layer = layerRef.current
             if (!layer) return
-            fillsRef.current?.draw()
             layer.draw()
-            const url = list.length || filled.length ? layer.getStage().toDataURL({ pixelRatio: 1 / s, mimeType: "image/png" }) : null
+            let url = null
+            if (list.length || filled.length || placed.length) {
+                const overlay = overlayRef.current
+                overlay?.visible(false) // the brush ring and the resize handles are not part of the picture
+                try {
+                    url = layer.getStage().toDataURL({ pixelRatio: 1 / s, mimeType: "image/png" })
+                } finally {
+                    overlay?.visible(true)
+                    overlay?.batchDraw()
+                }
+            }
             snapshotStore.set((prev) => ((prev[page] ?? null) === url ? prev : { ...prev, [page]: url }))
         })
         return () => cancelAnimationFrame(id)
-    }, [strokes, fills, tick, ready])
+    }, [strokes, fills, stamps, tick, ready])
 
     const end = () => {
         if (!drawing.current) return
@@ -1139,13 +1655,53 @@ export function DrawingCanvas({ pageIndex, editable = false }) {
         }
     }, [])
 
+    // Delete removes the stamp being edited, Escape or Enter finishes with it
+    useEffect(() => {
+        if (!editable) return
+        const onKey = (e) => {
+            const { selectedId } = toolStore.get()
+            if (!selectedId) return
+            const el = e.target
+            if (el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return
+            if (e.key === "Delete" || e.key === "Backspace") {
+                e.preventDefault()
+                editor.removeStamp(selectedId)
+                leaveSelect()
+            } else if (e.key === "Escape" || e.key === "Enter") {
+                leaveSelect()
+            }
+        }
+        window.addEventListener("keydown", onKey)
+        return () => window.removeEventListener("keydown", onKey)
+    }, [editable, editor])
+
+    // a selected shape follows the colour and transparency controls
+    const lastLook = useRef({ color: tools.color, opacity: tools.opacity })
+    useEffect(() => {
+        const prev = lastLook.current
+        lastLook.current = { color: tools.color, opacity: tools.opacity }
+        if (!editable || tools.tool !== "select" || !tools.selectedId) return
+        const stamp = editor.doc.stamps.find((s) => s.id === tools.selectedId)
+        if (!stamp || stamp.kind !== "shape") return
+        const patch = {}
+        if (tools.color !== prev.color) patch.color = tools.color
+        if (tools.opacity !== prev.opacity) patch.opacity = tools.opacity / 100
+        if (Object.keys(patch).length) editor.updateStamp(stamp.id, patch, true)
+    }, [tools.color, tools.opacity])
+
     const pos = (e) => {
         const p = e.target.getStage().getPointerPosition()
         return p && { x: p.x / scale, y: p.y / scale }
     }
 
     const down = (e) => {
-        const p = editable && pos(e)
+        if (!editable || e.evt.button > 0) return // right-click is for editing stamps, not drawing
+        if (tools.tool === "select") {
+            // a press anywhere but the stamp being edited finishes the edit
+            if (e.target === e.target.getStage()) leaveSelect()
+            return
+        }
+        const p = pos(e)
         if (!p) return
         const { tool, color, opacity } = tools
         const style = { color, opacity: opacity / 100 }
@@ -1178,19 +1734,53 @@ export function DrawingCanvas({ pageIndex, editable = false }) {
         if (drawing.current && p) editor.pointerMove(p.x, p.y)
     }
 
+    // dropping a stamp or shape dragged out of the side panel
+    const dragOver = (e) => {
+        if (!editable || !Array.from(e.dataTransfer.types).includes(STAMP_DRAG)) return
+        e.preventDefault()
+        e.dataTransfer.dropEffect = "copy"
+    }
+
+    const drop = (e) => {
+        const raw = editable && e.dataTransfer.getData(STAMP_DRAG)
+        const rect = layerRef.current?.getStage().container().getBoundingClientRect()
+        if (!raw || !rect) return
+        e.preventDefault()
+        let spec
+        try {
+            spec = JSON.parse(raw)
+        } catch {
+            return
+        }
+        const k = rect.width / canvas.width
+        const x = (e.clientX - rect.left) / k
+        const y = (e.clientY - rect.top) / k
+        if (x < 0 || y < 0 || x > canvas.width || y > canvas.height) return
+        placeStamp(spec, { x, y }, pageIndex)
+    }
+
     return (
-        <div ref={wrapRef} className="flex h-full w-full touch-none items-center justify-center overflow-hidden" style={{ cursor: editable && ringTools.includes(tools.tool) ? "none" : editable && tools.tool === "fill" ? "crosshair" : "default" }}>
+        <div ref={wrapRef} onDragOver={dragOver} onDrop={drop} className="flex h-full w-full touch-none items-center justify-center overflow-hidden" style={{ cursor: editable && ringTools.includes(tools.tool) ? "none" : editable && tools.tool === "fill" ? "crosshair" : "default" }}>
             <KonvaScene
                 width={canvas.width * scale}
                 height={canvas.height * scale}
                 scale={scale}
                 strokes={strokes}
                 fills={fills}
+                stamps={stamps}
+                selectedId={interactive ? tools.selectedId : null}
+                interactive={interactive}
+                editable={editable}
+                tick={tick}
                 handlers={{ onMouseDown: down, onTouchStart: down, onMouseMove: move, onTouchMove: move, onMouseUp: end, onTouchEnd: end, onMouseLeave: () => showRing(null) }}
-                fillsRef={fillsRef}
                 layerRef={layerRef}
+                overlayRef={overlayRef}
+                trRef={trRef}
                 ringRef={ringRef}
                 onReady={() => setReady(true)}
+                onStampLoaded={() => setTick((t) => t + 1)}
+                onStampEdit={enterSelect}
+                onStampChange={(id, patch) => editor.updateStamp(id, patch)}
             />
         </div>
     )

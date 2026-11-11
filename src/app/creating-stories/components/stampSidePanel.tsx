@@ -1,8 +1,8 @@
 "use client"
 
 import React, { useState } from 'react'
+import { SHAPE_LIST, STAMP_DRAG, useStampTools } from './drawingCanvas'
 
-// Organized by category matching your folder structure
 const STAMP_FOLDERS = {
   background: [
     'Untitled48_20240711082655.png',
@@ -37,6 +37,7 @@ const CATEGORY_KEYS = Object.keys(STAMP_FOLDERS) as (keyof typeof STAMP_FOLDERS)
 function StampSidePanel() {
   const [activeTab, setActiveTab] = useState<'shapes' | 'stamps'>('stamps')
   const [categoryIndex, setCategoryIndex] = useState(0)
+  const { color, selected, placeStamp, removeSelected, flipLayer } = useStampTools()
 
   const currentCategory = CATEGORY_KEYS[categoryIndex]
   const currentStickers = STAMP_FOLDERS[currentCategory] || []
@@ -47,6 +48,24 @@ function StampSidePanel() {
 
   const handleNext = () => {
     setCategoryIndex((prev) => (prev + 1) % CATEGORY_KEYS.length)
+  }
+
+  // Tiles are dragged onto the page. A click adds the stamp in the middle of the area for accessibility purposes
+  const dragStart = (e: React.DragEvent<HTMLElement>, spec: object) => {
+    e.dataTransfer.setData(STAMP_DRAG, JSON.stringify(spec))
+    e.dataTransfer.effectAllowed = 'copy'
+    const preview = e.currentTarget.querySelector('img, svg')
+    if (preview) {
+      const r = preview.getBoundingClientRect()
+      e.dataTransfer.setDragImage(preview, r.width / 2, r.height / 2)
+    }
+  }
+
+  const keyAdd = (e: React.KeyboardEvent<HTMLElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      e.currentTarget.click()
+    }
   }
 
   return (
@@ -77,8 +96,9 @@ function StampSidePanel() {
         <button
           type="button"
           onClick={handlePrev}
+          disabled={activeTab === 'shapes'}
           style={{ fontSize: '12px', lineHeight: '1', padding: '0 8px' }}
-          className="h-full flex items-center justify-center bg-[#FFC250] hover:bg-[#ffb020] active:translate-y-0.5 cursor-pointer rounded-md border-3 border-black font-bold text-black shadow-[0_2px_0_#000]"
+          className="h-full flex items-center justify-center bg-[#FFC250] hover:bg-[#ffb020] active:translate-y-0.5 cursor-pointer rounded-md border-3 border-black font-bold text-black shadow-[0_2px_0_#000] disabled:opacity-50 disabled:cursor-default"
         >
           ◀
         </button>
@@ -88,8 +108,9 @@ function StampSidePanel() {
         <button
           type="button"
           onClick={handleNext}
+          disabled={activeTab === 'shapes'}
           style={{ fontSize: '12px', lineHeight: '1', padding: '0 8px' }}
-          className="h-full flex items-center justify-center bg-[#FFC250] hover:bg-[#ffb020] active:translate-y-0.5 cursor-pointer rounded-md border-3 border-black font-bold text-black shadow-[0_2px_0_#000]"
+          className="h-full flex items-center justify-center bg-[#FFC250] hover:bg-[#ffb020] active:translate-y-0.5 cursor-pointer rounded-md border-3 border-black font-bold text-black shadow-[0_2px_0_#000] disabled:opacity-50 disabled:cursor-default"
         >
           ▶
         </button>
@@ -98,29 +119,86 @@ function StampSidePanel() {
       {/* Scrollable Grid dynamically mapping the folder files */}
       <div className="min-h-0 flex-1 bg-[#1E293B] rounded-2xl border-3 border-black p-3 overflow-y-auto shadow-inner">
         {activeTab === 'shapes' ? (
-          <div className="text-center text-white text-xs font-bold pt-10">Basic Shapes coming soon!</div>
-        ) : (
           <div className="grid grid-cols-2 gap-3 h-max">
-            {currentStickers.map((filename, index) => (
-              <button
-                key={index}
-                type="button"
+            {SHAPE_LIST.map((shape) => (
+              <div
+                key={shape.id}
+                role="button"
+                tabIndex={0}
+                draggable
+                onDragStart={(e) => dragStart(e, { kind: 'shape', shape: shape.id })}
+                onKeyDown={keyAdd}
                 style={{
                   backgroundImage:
                     'linear-gradient(145deg, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0) 50%, rgba(0,0,0,0.12) 100%)',
                 }}
                 className="bg-[#E2E8F0] rounded-lg border-solid border-black border-3 aspect-square flex items-center justify-center hover:bg-white hover:scale-105 active:scale-95 cursor-pointer transition-all shadow-[0_2px_0_#000] overflow-hidden p-1.5"
-                onClick={() => console.log(`Selected stamp: /images/${currentCategory}/${filename}`)}
+                onClick={() => placeStamp({ kind: 'shape', shape: shape.id })}
+                aria-label={`Add ${shape.label}`}
+              >
+                {/* preview is the same path the canvas draws, in the color that is currently picked */}
+                <svg
+                  viewBox="0 0 1 1"
+                  preserveAspectRatio="none"
+                  style={{ width: '70%', aspectRatio: `1 / ${Math.max(shape.ratio, 0.12)}`, overflow: 'visible' }}
+                  className="pointer-events-none"
+                >
+                  <path d={shape.svgPath} fill={color} />
+                </svg>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 h-max">
+            {currentStickers.map((filename, index) => (
+              <div
+                key={index}
+                role="button"
+                tabIndex={0}
+                draggable
+                onDragStart={(e) =>
+                  dragStart(e, { kind: 'image', src: `/images/${currentCategory}/${filename}`, category: currentCategory })
+                }
+                onKeyDown={keyAdd}
+                style={{
+                  backgroundImage:
+                    'linear-gradient(145deg, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0) 50%, rgba(0,0,0,0.12) 100%)',
+                }}
+                className="bg-[#E2E8F0] rounded-lg border-solid border-black border-3 aspect-square flex items-center justify-center hover:bg-white hover:scale-105 active:scale-95 cursor-pointer transition-all shadow-[0_2px_0_#000] overflow-hidden p-1.5"
+                onClick={() => placeStamp({ kind: 'image', src: `/images/${currentCategory}/${filename}`, category: currentCategory })}
               >
                 <img
                   src={`/images/${currentCategory}/${filename}`}
                   alt={`${currentCategory} stamp ${index + 1}`}
                   className="max-w-full max-h-full object-contain drop-shadow-sm pointer-events-none"
                 />
-              </button>
+              </div>
             ))}
           </div>
         )}
+      </div>
+
+      {/* What can be done with a stamp that was opened for editing (right-click it on the page) */}
+      <div className="mt-2 flex flex-shrink-0 items-center justify-between gap-1.5">
+        <button
+          type="button"
+          onClick={flipLayer}
+          disabled={!selected}
+          title="Show it behind or in front of the drawing"
+          style={{ fontSize: '12px', lineHeight: '1', padding: '0 8px' }}
+          className="h-9 flex-1 flex items-center justify-center whitespace-nowrap bg-[#D4D4D8] hover:bg-[#e4e4e7] active:translate-y-0.5 transition-all cursor-pointer rounded-md border-3 border-black font-bold text-black shadow-[0_2px_0_#000] disabled:opacity-50 disabled:cursor-default"
+        >
+          {selected?.back ? 'to front' : 'to back'}
+        </button>
+        <button
+          type="button"
+          onClick={removeSelected}
+          disabled={!selected}
+          style={{ fontSize: '12px', lineHeight: '1', padding: '0 8px' }}
+          className="h-9 flex-1 flex items-center justify-center whitespace-nowrap bg-[#D4D4D8] hover:bg-[#fca5a5] active:translate-y-0.5 transition-all cursor-pointer rounded-md border-3 border-black font-bold text-black shadow-[0_2px_0_#000] disabled:opacity-50 disabled:cursor-default"
+        >
+          delete
+        </button>
       </div>
     </div>
   )
