@@ -234,6 +234,7 @@ function createStoryRouter({ requireStudent, getSupabase = getSupabaseClient }) 
       },
       segments: segmentRows.map((segment) => ({
         segmentId: segment.segment_id,
+        studentId: segment.student_id,
         section: segment.section,
         sectionOrder: segment.section_order,
         title: segment.segment_title,

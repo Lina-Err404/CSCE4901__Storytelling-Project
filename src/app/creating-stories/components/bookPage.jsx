@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useLayoutEffect, useRef, useState } from "react"
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react"
 
 const FLIP_MS = 1000
 const STRIPS = 12 // the turning page is built from strips so it can bend like paper
@@ -10,9 +10,230 @@ const SERIF = "Georgia, 'Times New Roman', serif"
 const TEXT_SIZE = "clamp(13px, calc(var(--ph) * 0.045), 24px)"
 const SMALL_SIZE = "clamp(11px, calc(var(--ph) * 0.03), 15px)"
 const EDGE = "28px" // gap left between the book and the edge of the stage on the side where a whole page is showing.
+const FONTS = ["Arial", "Arial Black", "Calibri", "Cambria", "Comic Sans MS", "Courier New", "Georgia", "Helvetica", "Impact", "Times New Roman", "Trebuchet MS", "Verdana"]
 
 const clamp01 = (v) => Math.min(1, Math.max(0, v))
 const ease = (t) => 0.5 - 0.5 * Math.cos(Math.PI * t)
+
+function escapeHtml(text) {
+    return text.replace(/[&<>]/g, (character) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+    })[character])
+}
+
+function documentToHtml(document) {
+    return (document?.runs ?? []).map(({ text, marks = {} }) => {
+        let content = escapeHtml(text).replace(/\n/g, "<br>")
+        if (marks.bold) content = `<strong>${content}</strong>`
+        if (marks.italic) content = `<em>${content}</em>`
+        if (marks.underline) content = `<u>${content}</u>`
+        const fontFamily = FONTS.includes(marks.fontFamily) ? marks.fontFamily : null
+        const fontSize = Number.isInteger(marks.fontSize) && marks.fontSize >= 8 && marks.fontSize <= 72
+            ? marks.fontSize
+            : null
+        if (fontFamily || fontSize) {
+            const styles = [
+                fontFamily && `font-family:${fontFamily}`,
+                fontSize && `font-size:${fontSize}px`,
+            ].filter(Boolean).join(";")
+            content = `<span style="${styles}">${content}</span>`
+        }
+        return content
+    }).join("")
+}
+
+function serializeEditor(root) {
+    const runs = []
+    const addText = (text, marks) => {
+        if (!text) return
+        const previous = runs[runs.length - 1]
+        if (previous && JSON.stringify(previous.marks) === JSON.stringify(marks)) {
+            previous.text += text
+        } else {
+            runs.push({ text, marks })
+        }
+    }
+
+    const visit = (node, parentMarks = {}) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+            addText(node.nodeValue ?? "", parentMarks)
+            return
+        }
+        if (node.nodeType !== Node.ELEMENT_NODE) return
+
+        const element = node
+        if (element.tagName === "BR") {
+            addText("\n", parentMarks)
+            return
+        }
+
+        const marks = { ...parentMarks }
+        if (["B", "STRONG"].includes(element.tagName) || element.style.fontWeight === "bold") marks.bold = true
+        if (["I", "EM"].includes(element.tagName) || element.style.fontStyle === "italic") marks.italic = true
+        if (element.tagName === "U" || element.style.textDecoration.includes("underline")) marks.underline = true
+        const fontFamily = (element.style.fontFamily || element.getAttribute("face") || "").replace(/["']/g, "").split(",")[0].trim()
+        if (FONTS.includes(fontFamily)) marks.fontFamily = fontFamily
+        const fontSize = Number.parseInt(element.style.fontSize, 10)
+        if (Number.isInteger(fontSize) && fontSize >= 8 && fontSize <= 72) marks.fontSize = fontSize
+
+        const isBlock = ["DIV", "P"].includes(element.tagName)
+        if (isBlock && runs.length && !runs[runs.length - 1].text.endsWith("\n")) addText("\n", parentMarks)
+        Array.from(element.childNodes).forEach((child) => visit(child, marks))
+        if (isBlock && element.nextSibling && !runs[runs.length - 1]?.text.endsWith("\n")) addText("\n", parentMarks)
+    }
+
+    Array.from(root.childNodes).forEach((node) => visit(node))
+    return { version: 1, runs }
+}
+
+function RichTextEditor({ writingDocument, onChange, onSave }) {
+    const editorRef = useRef(null)
+    const selectionRef = useRef(null)
+    const lastDocumentRef = useRef("")
+    const serializedDocument = JSON.stringify(writingDocument ?? { version: 1, runs: [] })
+
+    useEffect(() => {
+        if (!editorRef.current || serializedDocument === lastDocumentRef.current) return
+        editorRef.current.innerHTML = documentToHtml(writingDocument)
+        lastDocumentRef.current = serializedDocument
+    }, [serializedDocument, writingDocument])
+
+    const rememberSelection = () => {
+        const selection = window.getSelection()
+        if (selection?.rangeCount && editorRef.current?.contains(selection.anchorNode)) {
+            selectionRef.current = selection.getRangeAt(0).cloneRange()
+        }
+    }
+
+    const restoreSelection = () => {
+        const selection = window.getSelection()
+        if (!selection || !selectionRef.current || !editorRef.current?.contains(selectionRef.current.commonAncestorContainer)) {
+            editorRef.current?.focus()
+            return
+        }
+        editorRef.current.focus()
+        selection.removeAllRanges()
+        selection.addRange(selectionRef.current)
+    }
+
+    const commit = () => {
+        if (!editorRef.current) return
+        const document = serializeEditor(editorRef.current)
+        lastDocumentRef.current = JSON.stringify(document)
+        onChange(document)
+        rememberSelection()
+    }
+
+    const applyCommand = (command) => {
+        restoreSelection()
+        window.document.execCommand(command)
+        commit()
+    }
+
+    const applyStyle = (property, value) => {
+        restoreSelection()
+        const selection = window.getSelection()
+        if (!selection?.rangeCount || selection.isCollapsed || !editorRef.current?.contains(selection.anchorNode)) return
+
+        const range = selection.getRangeAt(0)
+        const wrapper = window.document.createElement("span")
+        wrapper.style[property] = value
+        wrapper.appendChild(range.extractContents())
+        range.insertNode(wrapper)
+        selection.removeAllRanges()
+        const nextRange = window.document.createRange()
+        nextRange.selectNodeContents(wrapper)
+        selection.addRange(nextRange)
+        commit()
+    }
+
+    const button = (label, command) => (
+        <button
+            key={command}
+            type="button"
+            aria-label={label}
+            title={label}
+            className="rounded border border-neutral-300 px-2 py-1 text-sm text-neutral-800 hover:bg-neutral-100"
+            onMouseDown={(event) => { event.preventDefault(); rememberSelection() }}
+            onClick={() => applyCommand(command)}
+        >
+            {label}
+        </button>
+    )
+
+    return (
+        <div className="flex h-full min-h-0 flex-col">
+            <div className="flex shrink-0 flex-wrap items-center gap-1 border-b border-neutral-200 px-2 py-1">
+                {button("Bold", "bold")}
+                {button("Italic", "italic")}
+                {button("Underline", "underline")}
+                <select
+                    aria-label="Font family"
+                    className="max-w-28 rounded border border-neutral-300 bg-white px-1 py-1 text-xs text-neutral-800"
+                    defaultValue="Georgia"
+                    onMouseDown={rememberSelection}
+                    onChange={(event) => applyStyle("fontFamily", event.target.value)}
+                >
+                    {FONTS.map((font) => <option key={font} value={font}>{font}</option>)}
+                </select>
+                <select
+                    aria-label="Font size"
+                    className="rounded border border-neutral-300 bg-white px-1 py-1 text-xs text-neutral-800"
+                    defaultValue="16"
+                    onMouseDown={rememberSelection}
+                    onChange={(event) => applyStyle("fontSize", `${event.target.value}px`)}
+                >
+                    {[12, 14, 16, 18, 24, 32, 48, 72].map((size) => (
+                        <option key={size} value={size}>{size}</option>
+                    ))}
+                </select>
+            </div>
+            <div
+                ref={editorRef}
+                role="textbox"
+                aria-label="Story text"
+                aria-multiline="true"
+                contentEditable
+                suppressContentEditableWarning
+                className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap px-[5%] py-[4.5%] text-[#26262e] outline-none empty:before:text-[#a9abb8] empty:before:content-['Write_your_story_here…']"
+                style={{ lineHeight: 1.65, fontFamily: SERIF, fontSize: TEXT_SIZE }}
+                onInput={commit}
+                onMouseUp={rememberSelection}
+                onKeyUp={rememberSelection}
+                onKeyDown={(event) => {
+                    rememberSelection()
+                    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                        event.preventDefault()
+                        onSave()
+                    }
+                }}
+            />
+        </div>
+    )
+}
+
+function RichTextDisplay({ writingDocument }) {
+    return (
+        <div className="absolute overflow-hidden whitespace-pre-wrap rounded-xl px-[5%] py-[4.5%] text-[#26262e]" style={{ inset: "13% 6% 10% 8%", lineHeight: 1.65, fontFamily: SERIF, fontSize: TEXT_SIZE }}>
+            {(writingDocument?.runs ?? []).map((run, index) => (
+                <span
+                    key={index}
+                    style={{
+                        fontFamily: run.marks?.fontFamily,
+                        fontSize: run.marks?.fontSize ? `${run.marks.fontSize}px` : undefined,
+                        fontWeight: run.marks?.bold ? "bold" : undefined,
+                        fontStyle: run.marks?.italic ? "italic" : undefined,
+                        textDecoration: run.marks?.underline ? "underline" : undefined,
+                    }}
+                >
+                    {run.text}
+                </span>
+            ))}
+        </div>
+    )
+}
 
 /* one white page */
 function Face({ side, children }) {
@@ -31,12 +252,15 @@ function Face({ side, children }) {
 }
 
 /* what is written on a page: name, story, page number */
-function PageBody({ side, page, number, editable, onChangeText, onSave }) {
+function PageBody({ side, page, number, editable, onChangeDocument, onSave }) {
     if (!page) return null
 
     const box = side === "left" ? "13% 8% 10% 6%" : "13% 6% 10% 8%"
     const edge = side === "left" ? { left: "6%", right: "8%" } : { left: "8%", right: "6%" }
-    const textStyle = { fontFamily: SERIF, fontSize: TEXT_SIZE, lineHeight: 1.65, padding: "4.5% 5%" }
+    const writingDocument = page.writingDocument ?? {
+        version: 1,
+        runs: page.text ? [{ text: page.text, marks: {} }] : [],
+    }
 
     return (
         <>
@@ -48,26 +272,14 @@ function PageBody({ side, page, number, editable, onChangeText, onSave }) {
                 // the text box: dashed outline or solid outline when you click in
                 <div
                     className="absolute rounded-xl border-[1.5px] border-dashed border-[#c3c6d4] transition-colors focus-within:border-solid focus-within:border-[#6b7cff]"
-                    style={{ inset: box }}
+                    style={{ inset: box, resize: "both", overflow: "auto", minWidth: "45%", minHeight: "35%", maxWidth: "100%", maxHeight: "100%" }}
                 >
-                    <textarea
-                        value={page.text}
-                        onChange={(e) => onChangeText(e.target.value)}
-                        onKeyDown={(e) => {
-                            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); onSave() }
-                        }}
-                        placeholder="Write your story here…"
-                        className="h-full w-full resize-none bg-transparent text-[#26262e] outline-none placeholder:text-[#a9abb8]"
-                        style={textStyle}
-                    />
+                    <RichTextEditor writingDocument={writingDocument} onChange={onChangeDocument} onSave={onSave} />
                 </div>
             ) : (
-                <div
-                    className="absolute overflow-hidden whitespace-pre-wrap rounded-xl text-[#26262e]"
-                    style={{ inset: box, border: page.mine ? "1.5px dashed #c3c6d4" : "1.5px solid transparent", ...textStyle }}
-                >
-                    {page.text || <span className="italic text-[#a9abb8]">Nothing written yet</span>}
-                </div>
+                page.text
+                    ? <RichTextDisplay writingDocument={writingDocument} />
+                    : <div className="absolute rounded-xl italic text-[#a9abb8]" style={{ inset: box, border: page.mine ? "1.5px dashed #c3c6d4" : "1.5px solid transparent", padding: "4.5% 5%" }}>Nothing written yet</div>
             )}
 
             <span className="absolute left-0 right-0 text-center text-[#b4b6c2]" style={{ bottom: "3.5%", fontSize: SMALL_SIZE }}>
@@ -159,7 +371,7 @@ function Strip({ i, front, back, frontNumber, backNumber }) {
 }
 
 /* the open book */
-function BookPage({ pages, index, myIndex, mode = "writing", onTurn, onJump, onChangeText, onSave, saved, error }) {
+function BookPage({ pages, index, myIndex, mode = "writing", onTurn, onJump, onChangeDocument, onSave, saved, error, errorMessage }) {
     const [anim, setAnim] = useState(null) // null | { dir: "next" | "prev" }
     const bookRef = useRef(null)
     const leafRef = useRef(null)
@@ -272,7 +484,7 @@ function BookPage({ pages, index, myIndex, mode = "writing", onTurn, onJump, onC
                                 page={page(rightIdx)}
                                 number={2 * rightIdx + 2}
                                 editable={canEdit}
-                                onChangeText={onChangeText}
+                                onChangeDocument={onChangeDocument}
                                 onSave={onSave}
                             />
                         </Face>
@@ -329,7 +541,7 @@ function BookPage({ pages, index, myIndex, mode = "writing", onTurn, onJump, onC
                     Save
                 </button>
                 <span role="status" className={error ? "text-red-600" : "text-neutral-500"}>
-                    {error ? "Couldn’t save. Try again." : saved ? "Saved" : "Not saved yet"}
+                    {error ? (errorMessage || "Couldn’t save. Try again.") : saved ? "Saved" : "Not saved yet"}
                 </span>
             </div>
         </div>

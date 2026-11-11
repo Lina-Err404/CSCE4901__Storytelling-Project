@@ -190,6 +190,7 @@ describe('Supabase-backed story routes', () => {
     ]);
     expect(response.body.segments[0]).toMatchObject({
       segmentId: SEGMENT_ID,
+      studentId: STUDENT_PROFILE_ID,
       writingContent: 'A draft',
       writingDocument: { version: 1, runs: [{ text: 'A draft', marks: {} }] },
       textBoxSize: { widthPercent: 86, heightPercent: 77 },

@@ -2,50 +2,91 @@
 
 import { useState, useEffect } from "react"
 import supabase from '@/src/utils/supabase'
+import { auth } from "@/src/app/firebase-client"
 import BookPage from "./bookPage"
 
-// each student writes one section of the story, in book order. TODO: change this later to use the assigned sections
-const SECTIONS = ["exposition", "rising_action", "climax", "falling_action", "resolution"]
+const EMPTY_DOCUMENT = { version: 1, runs: [] }
+
+function documentText(document) {
+    return document.runs.map(({ text }) => text).join("")
+}
+
+function toWritingDocument(document, text = "") {
+    return document?.version === 1 && Array.isArray(document.runs)
+        ? document
+        : { version: 1, runs: text ? [{ text, marks: {} }] : [] }
+}
+
+async function storyApi(path, options = {}) {
+    if (!auth) throw new Error("Firebase authentication is not configured.")
+    await auth.authStateReady()
+    const user = auth.currentUser
+    if (!user) throw new Error("Sign in to load or save your story.")
+    const token = await user.getIdToken()
+    const response = await fetch(`/api${path}`, {
+        ...options,
+        headers: {
+            Authorization: `Bearer ${token}`,
+            ...(options.body ? { "Content-Type": "application/json" } : {}),
+            ...options.headers,
+        },
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.error || `Story request failed (${response.status})`)
+    return payload
+}
 
 // each student has 2 pages in the book, writing and drawing
 // everyone's pages can be read, but a student can only edit their own
 const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" }) => {
-    const myIndex = students.indexOf(studentId)
-    const section = SECTIONS[myIndex] // the section of the story this student writes
+    const selectedIndex = students.indexOf(studentId)
+    const studentsKey = students.join(",")
 
-    const [stories, setStories] = useState({}) // studentId -> saved story text, from Supabase
+    const [stories, setStories] = useState({}) // studentId -> saved story segment, from Supabase
     const [names, setNames] = useState({}) // studentId -> display name, from Supabase
-    const [draft, setDraft] = useState(null) // unsaved text (null = nothing typed since last save)
-    const [index, setIndex] = useState(myIndex) // the page showing on the right, opens on owned page
+    const [draft, setDraft] = useState(null) // unsaved rich-text document
+    const [index, setIndex] = useState(Math.max(0, selectedIndex)) // the page showing on the right
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(false)
 
-    // listen to everyone's pages so other students' stories update as they save
+    const myIndex = students.findIndex((id) => stories[id]?.assignedToYou)
+    const ownedStudentId = myIndex >= 0 ? students[myIndex] : studentId
+
+    // Load stories through the API; Realtime only triggers a fresh authorized API read.
     useEffect(() => {
         const load = async () => {
-            const { data, error: err } = await supabase
-                .from('story_segments')
-                .select('student_id, writing_content')
-                .eq('story_id', storyId)
-            if (err) {
-                console.log('Error reading stories: ', err)
-                setError(true)
-            } else {
+            try {
+                const result = await storyApi(`/stories/${storyId}`)
                 const next = {}
-                data.forEach((row) => { next[row.student_id] = row.writing_content ?? "" })
+                result.segments.forEach((segment) => {
+                    next[segment.studentId] = {
+                        segmentId: segment.segmentId,
+                        assignedToYou: segment.assignedToYou,
+                        writingDocument: toWritingDocument(segment.writingDocument, segment.writingContent ?? ""),
+                    }
+                })
                 setStories(next)
+                const assignedIndex = studentsKey.split(",").indexOf(
+                    result.segments.find((segment) => segment.assignedToYou)?.studentId,
+                )
+                if (assignedIndex >= 0) setIndex(assignedIndex)
+                setError(false)
+            } catch (reason) {
+                console.error('Error reading stories:', reason)
+                setError(true)
+            } finally {
+                setLoading(false)
             }
-            setLoading(false)
         }
 
-        load()
+        void load()
         const channel = supabase
             .channel(`story-${storyId}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'story_segments', filter: `story_id=eq.${storyId}` }, load)
             .subscribe()
 
         return () => { supabase.removeChannel(channel) }
-    }, [storyId])
+    }, [storyId, studentsKey])
 
     // get the display name of every student in the book
     useEffect(() => {
@@ -53,7 +94,7 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
             const { data, error: err } = await supabase
                 .from('profiles')
                 .select('id, display_name')
-                .in('id', students)
+                .in('id', studentsKey.split(","))
             if (err) {
                 console.log('Error reading names: ', err)
                 return
@@ -63,40 +104,53 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
             setNames(next)
         }
         loadNames()
-    }, [students.join(",")])
+    }, [studentsKey])
 
-    const pages = students.map((id) => ({
-        id,
-        name: names[id] ?? "A student",
-        label: id === studentId ? "Your story" : `${names[id] ?? "A student"}’s story`,
-        text: id === studentId ? (draft ?? stories[id] ?? "") : (stories[id] ?? ""),
-        mine: id === studentId,
-        drawing: null, // this student's drawing for the left page, to be added later
-    }))
+    const pages = students.map((id) => {
+        const writingDocument = id === ownedStudentId && draft !== null
+            ? draft
+            : stories[id]?.writingDocument ?? EMPTY_DOCUMENT
+        const isMine = Boolean(stories[id]?.assignedToYou)
+        return {
+            id,
+            name: names[id] ?? "A student",
+            label: isMine ? "Your story" : `${names[id] ?? "A student"}’s story`,
+            text: documentText(writingDocument),
+            writingDocument,
+            mine: isMine,
+            drawing: null, // this student's drawing for the left page, to be added later
+        }
+    })
 
-    const saved = draft === null || draft === (stories[studentId] ?? "")
+    const savedDocument = stories[ownedStudentId]?.writingDocument ?? EMPTY_DOCUMENT
+    const saved = draft === null || JSON.stringify(draft) === JSON.stringify(savedDocument)
 
     const save = async () => {
-        if (draft === null) return
-        const { error: err } = await supabase
-            .from('story_segments')
-            .upsert(
-                { story_id: storyId, student_id: studentId, section, writing_content: draft },
-                { onConflict: 'story_id,section,section_order' }
-            )
-        if (err) {
-            console.log('Error writing document: ', err)
+        if (draft === null || !stories[ownedStudentId]) return
+        const writingContent = documentText(draft)
+        try {
+            const savedSegment = await storyApi(`/story-segments/${stories[ownedStudentId].segmentId}`, {
+                method: "PUT",
+                body: JSON.stringify({ writingContent, writingDocument: draft }),
+            })
+            setStories((previous) => ({
+                ...previous,
+                [ownedStudentId]: {
+                    ...previous[ownedStudentId],
+                    writingDocument: savedSegment.writingDocument,
+                },
+            }))
+            setDraft(null)
+            setError(false)
+        } catch (reason) {
+            console.error('Error saving story:', reason)
             setError(true)
-            return
         }
-        setStories((prev) => ({ ...prev, [studentId]: draft })) // keep the saved text showing
-        setDraft(null)
-        setError(false)
     }
 
     // turning a page away from owned page saves it
     const turn = (dir) => {
-        if (index === myIndex) save()
+        if (index === myIndex) void save()
         setIndex((i) => i + (dir === "next" ? 1 : -1))
     }
 
@@ -106,11 +160,11 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
         <BookPage
             pages={pages}
             index={index}
-            myIndex={myIndex}
+            myIndex={myIndex >= 0 ? myIndex : selectedIndex}
             mode={mode}
             onTurn={turn}
             onJump={() => setIndex(myIndex)}
-            onChangeText={setDraft}
+            onChangeDocument={setDraft}
             onSave={save}
             saved={saved}
             error={error}
