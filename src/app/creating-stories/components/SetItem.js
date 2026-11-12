@@ -15,6 +15,7 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
     const section = SECTIONS[myIndex] // the section of the story this student writes
 
     const [stories, setStories] = useState({}) // studentId -> saved story text, from Supabase
+    const [segmentIds, setSegmentIds] = useState({}) // studentId -> segment_id
     const [names, setNames] = useState({}) // studentId -> display name, from Supabase
     const [draft, setDraft] = useState(null) // unsaved text (null = nothing typed since last save)
     const [index, setIndex] = useState(myIndex) // the page showing on the right, opens on owned page
@@ -26,15 +27,20 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
         const load = async () => {
             const { data, error: err } = await supabase
                 .from('story_segments')
-                .select('student_id, writing_content')
+                .select('segment_id, student_id, writing_content')
                 .eq('story_id', storyId)
             if (err) {
                 console.log('Error reading stories: ', err)
                 setError(true)
             } else {
                 const next = {}
-                data.forEach((row) => { next[row.student_id] = row.writing_content ?? "" })
+                const nextSegs = {}
+                data.forEach((row) => {
+                    next[row.student_id] = row.writing_content ?? ""
+                    nextSegs[row.student_id] = row.segment_id
+                })
                 setStories(next)
+                setSegmentIds(nextSegs)
             }
             setLoading(false)
         }
@@ -79,6 +85,7 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
 
     const pages = students.map((id) => ({
         id,
+        segmentId: segmentIds[id] ?? `${storyId}-${id}`,
         name: names[id] ?? "A student",
         label: id === studentId ? "Your story" : `${names[id] ?? "A student"}’s story`,
         text: id === studentId ? (draft ?? stories[id] ?? "") : (stories[id] ?? ""),
@@ -121,6 +128,7 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
             console.log('Error creating segment: ', err)
             return null
         }
+        setSegmentIds((prev) => ({ ...prev, [studentId]: data.segment_id }))
         return data.segment_id
     }
 
@@ -143,6 +151,7 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
             pages={pages}
             index={index}
             myIndex={myIndex}
+            studentId={studentId}
             mode={mode}
             onTurn={turn}
             onJump={() => setIndex(myIndex)}
