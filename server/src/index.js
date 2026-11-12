@@ -4,7 +4,7 @@ const { createSocketAuth } = require('./socketAuth');
 const { createRequireStudent, createRequireTeacher } = require('./auth');
 const { createLobbyService, createLobby, joinLobby } = require('./lobbyService');
 const { createLobbyRoutes } = require('./lobbyRoutes');
-
+const { createRandomBreakoutRoutes } = require('./randomBreakoutRoutes');
 module.exports = {
   createClassesRouter,
   createLobbyRouter,
@@ -15,4 +15,5 @@ module.exports = {
   createLobby,
   joinLobby,
   createLobbyRoutes,
+  createRandomBreakoutRoutes,
 };
