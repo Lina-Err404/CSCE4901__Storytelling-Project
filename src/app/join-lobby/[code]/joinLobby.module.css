@@ -1,0 +1,63 @@
+.page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+  background: linear-gradient(180deg, #1c2f7a 0%, #2d52a3 45%, #4a8abf 100%);
+}
+
+.heading {
+  margin: 8px 0 0;
+  font-size: 2rem;
+  font-weight: 800;
+  color: #fff;
+}
+.sub {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #a9c8f0;
+}
+
+.star {
+  width: 120px;
+  height: 120px;
+  filter: drop-shadow(0 0 14px rgba(247, 201, 72, 0.7));
+}
+.ring {
+  fill: none;
+  stroke: #f7c948;
+  stroke-width: 1.5;
+  stroke-dasharray: 70 26;   /* gaps in the ring, like your mock */
+}
+.starShape {
+  fill: #f7c948;
+}
+
+.seats {
+  list-style: none;
+  margin: 28px 0 0;
+  padding: 0;
+  display: flex;
+  gap: 24px;
+}
+.seat {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #f6f1e6;
+  border: 3px solid #3b4aa8;
+}
+.you {
+  border-color: #f7c948;
+  box-shadow: 0 0 0 3px rgba(247, 201, 72, 0.35);
+}
+
+@media (max-width: 480px) {
+  .seats { gap: 14px; }
+  .seat { width: 44px; height: 44px; }
+}
