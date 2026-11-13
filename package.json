@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@firebase/firestore": "^4.19.0",
+    "@openpageflip/core": "0.4.2",
+    "@openpageflip/react": "0.7.0",
     "@supabase/supabase-js": "^2.80.0",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.0",
@@ -19,6 +21,7 @@
     "konva": "^10.9.0",
     "lucide-react": "^1.59.0",
     "next": "^16.4.2",
+    "page-flip": "2.0.7",
     "react": "^19.3.1",
     "react-aria-components": "^1.22.1",
     "react-dom": "^19.3.1",

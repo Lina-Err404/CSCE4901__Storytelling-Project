@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Image from "next/image"
 import SetItem from "./components/SetItem"
 import ListItems from "./components/ListItems"
@@ -24,20 +24,37 @@ export default function Home() {
   // Writing mode shows the right (writing) page, drawing mode shows the left (drawing) page.
   // Shared by the top bar button and the book.
   const [mode, setMode] = useState<"writing" | "drawing">("writing")
+  const toolbarRef = useRef<HTMLDivElement>(null)
+  const [headerHeight, setHeaderHeight] = useState(64)
+
+  // The fixed sidebar must follow the toolbar when a long prompt wraps.
+  useEffect(() => {
+    const toolbar = toolbarRef.current
+    if (!toolbar) return
+
+    const observer = new ResizeObserver(() => {
+      setHeaderHeight(toolbar.getBoundingClientRect().height)
+    })
+    observer.observe(toolbar)
+    return () => observer.disconnect()
+  }, [])
 
   return (
     <main className="max-h-screen max-w-screen overflow-hidden">
       <div>
         {/*Component containing top bar and buttoms */}
-        <TopBar
-          mode={mode}
-          onToggleMode={() => setMode((m) => (m === "writing" ? "drawing" : "writing"))}
-        />
+        <div ref={toolbarRef}>
+          <TopBar
+            mode={mode}
+            onToggleMode={() => setMode((m) => (m === "writing" ? "drawing" : "writing"))}
+          />
+        </div>
         <SidebarProvider
-          className="h-[calc(100svh-4rem-var(--footer-height,0px))] min-h-0"
+          className="h-[calc(100svh-var(--header-height)-var(--footer-height,0px))] min-h-0"
           style={
             {
               "--sidebar-width": "400px",
+              "--header-height": `${headerHeight}px`,
             } as React.CSSProperties
           }
         >

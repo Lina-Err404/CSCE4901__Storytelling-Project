@@ -1,5 +1,6 @@
 // bookPage.test.jsx
-import { render, screen, fireEvent, act } from "@testing-library/react"
+import { render, screen, fireEvent, act, within } from "@testing-library/react"
+import { useLayoutEffect, useRef, useState } from "react"
 import "@testing-library/jest-dom"
 import BookPage from "../app/creating-stories/components/bookPage"
 
@@ -210,5 +211,99 @@ describe("page turning", () => {
     next()
     act(() => { jest.advanceTimersByTime(100) })
     expect(props.onTurn).toHaveBeenCalledTimes(2)
+  })
+
+  test("the animated sheet has one read-only copy of each face with the correct numbers", () => {
+    const { container } = setup()
+    next()
+    const leaf = container.querySelector("[data-turning-page]")
+    expect(leaf).toHaveAttribute("aria-hidden", "true")
+    expect(leaf.querySelectorAll("textarea, input, button")).toHaveLength(0)
+    expect(within(leaf).getAllByText("ben text")).toHaveLength(1)
+    expect(within(leaf).getAllByText("cal’s drawing")).toHaveLength(1)
+    expect(within(leaf).getByText("4")).toBeInTheDocument()
+    expect(within(leaf).getByText("5")).toBeInTheDocument()
+  })
+
+  test.each([
+    ["next", "rotateY(-180deg)"],
+    ["prev", "rotateY(0deg)"],
+  ])("%s reaches an exact unlit endpoint before its cover is removed", (direction, transform) => {
+    let leaf
+    const onTurn = jest.fn(() => {
+      expect(leaf.isConnected).toBe(true)
+      expect(leaf.style.transform).toBe(transform)
+      expect(leaf.style.getPropertyValue("--leaf-shade")).toBe("0")
+      expect(leaf.style.getPropertyValue("--leaf-glow")).toBe("0")
+    })
+    const { container } = setup({ onTurn })
+    if (direction === "next") next()
+    else prev()
+    leaf = container.querySelector("[data-turning-page]")
+    act(() => { jest.advanceTimersByTime(100) })
+    expect(onTurn).toHaveBeenCalledTimes(1)
+    expect(onTurn).toHaveBeenCalledWith(direction)
+    expect(leaf.isConnected).toBe(false)
+  })
+
+  test("landing commits the destination and removes the animated cover together", () => {
+    mockReducedMotion(false)
+    const commits = []
+    const onTurn = jest.fn()
+    function Book() {
+      const [index, setIndex] = useState(1)
+      const root = useRef(null)
+      useLayoutEffect(() => {
+        commits.push({ index, covered: !!root.current.querySelector("[data-turning-page]") })
+      })
+      return <div ref={root}><BookPage pages={pages} index={index} myIndex={1} saved onTurn={(direction) => {
+        onTurn(direction)
+        setIndex((current) => current + (direction === "next" ? 1 : -1))
+      }} /></div>
+    }
+    const { container } = render(<Book />)
+    next()
+    const leaf = container.querySelector("[data-turning-page]")
+    act(() => { jest.advanceTimersByTime(900) })
+    expect(leaf.isConnected).toBe(true)
+    expect(onTurn).not.toHaveBeenCalled()
+    act(() => { jest.advanceTimersByTime(200) })
+    expect(onTurn).toHaveBeenCalledTimes(1)
+    expect(leaf.isConnected).toBe(false)
+    expect(commits.at(-1)).toEqual({ index: 2, covered: false })
+    expect(commits).not.toContainEqual({ index: 2, covered: true })
+    expect(screen.getByText("cal’s story")).toBeInTheDocument()
+    expect(screen.getByText("5")).toBeInTheDocument()
+    expect(screen.getByText("6")).toBeInTheDocument()
+  })
+
+  test("consecutive turns retain page order and ignore repeated clicks until landing", () => {
+    const onTurn = jest.fn()
+    function Book() {
+      const [index, setIndex] = useState(0)
+      return <BookPage pages={pages} index={index} myIndex={1} saved onTurn={(direction) => {
+        onTurn(direction)
+        setIndex((current) => current + (direction === "next" ? 1 : -1))
+      }} />
+    }
+    render(<Book />)
+    expect(screen.getByRole("button", { name: /previous page/i })).toBeDisabled()
+    next()
+    next()
+    prev()
+    act(() => { jest.advanceTimersByTime(100) })
+    expect(onTurn).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole("textbox")).toHaveValue("ben text")
+    next()
+    act(() => { jest.advanceTimersByTime(100) })
+    expect(screen.getByRole("button", { name: /next page/i })).toBeDisabled()
+    prev()
+    act(() => { jest.advanceTimersByTime(100) })
+    expect(screen.getByRole("textbox")).toHaveValue("ben text")
+    prev()
+    act(() => { jest.advanceTimersByTime(100) })
+    expect(screen.getByText("amy text")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /previous page/i })).toBeDisabled()
+    expect(onTurn.mock.calls.map(([direction]) => direction)).toEqual(["next", "next", "prev", "prev"])
   })
 })

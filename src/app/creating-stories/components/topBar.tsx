@@ -1,42 +1,50 @@
 "use client"
 
-import React, {useCallback, useEffect, useMemo, useRef, useState } from "react"
-
-//Top Bar with Prompt Box, Writing/Drawing Mode Button, Submit, (also a timer but i forgot -Belen)
-
-// mode + onToggleMode come from the parent so the book and this button share one state
-function TopBar({ mode = "writing", onToggleMode }: { mode?: "writing" | "drawing"; onToggleMode?: () => void }) {
-    return (
-
-        <header className="h-16 w-screen border-b bg-[#0F1E4B] items-center justify-center flex">
-
-            {/*Prompt Box where the teachers prompts are displayed*/}
-
-          <div className="flex justify-start w-5 h-5 bg-[#F1EADF] rounded-full inline-flex items-center p-5 ml-2">
-          </div>
-          <div className="flex justify-center w-20 h-10 bg-[#F1EADF] rounded-xl items-center border border-gray-200 mx-auto ml-5">
-            <h1 className="text-black mx-auto">25:07</h1>
-          </div>
-
-            <div className="p-4 max-w-200 max-h-10 mx-auto bg-white rounded-xl shadow-md border border-gray-200 items-center flex">
-                <h1 className="text-black mx-auto">Prompt: Write a story about a super hero</h1>
-            </div>
-
-          <div className="items-center justify-end flex flex-row">
-            {/*Writing/Drawing Mode Button: shows the mode you would switch to*/}
-            <div className="mr-6 p-4 w-40 h-10 mx-auto bg-[#F1EADF] rounded-xl border border-gray-200 flex items-center">
-              <button className="text-black mx-auto" onClick={onToggleMode}>
-                {mode === "writing" ? "Drawing Mode" : "Writing Mode"}
-              </button>
-            </div>
-            {/*Submit Button*/}
-            <div className="mr-12 p-4 w-20 h-10 mx-auto bg-[#D85728] rounded-xl border border-gray-200 flex items-center">
-              <button className="text-white mx-auto">Submit</button>
-            </div>
-          </div>
-        </header>
-
-    );
+type TopBarProps = {
+  mode?: "writing" | "drawing"
+  onToggleMode?: () => void
+  prompt?: string
 }
 
-export default TopBar;
+// Mode comes from the parent so the book and this button share one state.
+function TopBar({
+  mode = "writing",
+  onToggleMode,
+  prompt = "Write a story about a super hero",
+}: TopBarProps) {
+  return (
+    <header className="grid min-h-16 w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-3 border-b border-white/10 bg-[#0F1E4B] px-3 py-3 md:grid-cols-[auto_minmax(0,1fr)_auto] md:gap-x-5 md:px-5">
+      <div className="flex shrink-0 items-center gap-3">
+        <div aria-hidden="true" className="size-10 shrink-0 rounded-full bg-[#F1EADF]" />
+        <div aria-label="Time remaining" className="flex h-10 min-w-20 items-center justify-center rounded-xl border border-[#E2D8C8] bg-[#F1EADF] px-3 text-sm font-medium tabular-nums text-[#0F1E4B]">
+          25:07
+        </div>
+      </div>
+
+      <div className="col-span-2 col-start-1 row-start-2 flex min-w-0 justify-center md:col-span-1 md:col-start-2 md:row-start-1">
+        <p className="w-fit min-w-0 max-w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm leading-6 text-[#0F1E4B] [overflow-wrap:anywhere]">
+          <span className="font-semibold">Prompt: </span>{prompt}
+        </p>
+      </div>
+
+      <div className="col-start-2 row-start-1 flex min-w-0 flex-wrap items-center justify-end gap-2 md:col-start-3 md:flex-nowrap md:gap-3">
+        {/* Shows the mode you would switch to. */}
+        <button
+          type="button"
+          onClick={onToggleMode}
+          className="min-h-10 rounded-xl border border-[#E2D8C8] bg-[#F1EADF] px-4 py-2 text-sm font-medium whitespace-nowrap text-[#0F1E4B] transition-colors hover:bg-[#E6DCCB] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F1EADF] active:bg-[#DDD0BA] motion-reduce:transition-none"
+        >
+          {mode === "writing" ? "Drawing Mode" : "Writing Mode"}
+        </button>
+        <button
+          type="button"
+          className="min-h-10 rounded-xl border border-white/20 bg-[#D85728] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#C14B22] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F1EADF] active:bg-[#AC401C] motion-reduce:transition-none"
+        >
+          Submit
+        </button>
+      </div>
+    </header>
+  )
+}
+
+export default TopBar

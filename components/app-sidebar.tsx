@@ -2,22 +2,18 @@
 
 import * as React from "react"
 
-import { Label } from "@/components/ui/label"
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarHeader,
-  SidebarInput,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { Switch } from "@/components/ui/switch"
-import { Shapes, UserGroup, PackageOpen, Image, Brush, Type, Letters, Lightbulb, ScrollText, BookImage } from "lucide-react"
+import { Type, Letters, Lightbulb, ScrollText, BookImage } from "lucide-react"
 
 
 // This is sidebar data (each icon and their respective objects)
@@ -131,17 +127,15 @@ const data = {
 type SidebarImage = { name: string; src: string }
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  // Note: I'm using state to show active item.
-  // IRL you should use the url/router.
+  // Tool selection is local; panel visibility belongs to SidebarProvider.
   const [activeItem, setActiveItem] = React.useState(data.navMain[0])
   const [images, setImages] = React.useState<SidebarImage[]>([])
-  const { setOpen } = useSidebar()
+  const { open, setOpen } = useSidebar()
+  const panelId = React.useId()
+  const headingId = React.useId()
 
-React.useEffect(() => {
-    if (!activeItem.folder) {
-      setImages([])
-      return
-    }
+  React.useEffect(() => {
+    if (!activeItem.folder) return
     const controller = new AbortController()
     fetch(`/api/images/${activeItem.folder}`, { signal: controller.signal })
       .then((r) => r.json())
@@ -155,7 +149,7 @@ React.useEffect(() => {
   return (
     <Sidebar
       collapsible="icon"
-      className="overflow-hidden *:data-[sidebar=sidebar]:flex-row"
+      className="overflow-hidden border-blue-200 *:data-[sidebar=sidebar]:flex-row"
       {...props}
     >
       {/* This is the first sidebar */}
@@ -163,28 +157,32 @@ React.useEffect(() => {
       {/* This will make the sidebar appear as icons. */}
       <Sidebar
         collapsible="none"
-        className="w-[calc(var(--sidebar-width-icon)+1px)]! border-r"
+        className="w-(--sidebar-width-icon)! shrink-0 border-r border-blue-200/20 bg-[#294889] bg-none"
       >
-        <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupContent className="px-1.5 md:px-0">
-              <SidebarMenu>
+        <SidebarContent className="py-3">
+          <SidebarGroup className="w-full">
+            <SidebarGroupContent className="px-1.5">
+              <SidebarMenu className="items-center gap-2" aria-label="Story tools">
                 {data.navMain.map((item) => (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton
+                      aria-label={item.title}
+                      aria-expanded={open && activeItem.title === item.title}
+                      aria-controls={open ? panelId : undefined}
                       tooltip={{
                         children: item.title,
                         hidden: false,
                       }}
-                      onClick={() => {
+                      onPress={() => {
+                        setOpen(!(open && activeItem.title === item.title))
+                        if (activeItem !== item) setImages([])
                         setActiveItem(item)
-                        setOpen(true)
                       }}
-                      isActive={activeItem?.title === item.title}
-                      className="px-2.5 md:px-2"
+                      isActive={open && activeItem.title === item.title}
+                      className="size-11 justify-center rounded-xl border border-transparent p-0 text-blue-100 transition-colors duration-150 hover:bg-white/10 hover:text-white active:bg-white/15 data-[active=true]:border-blue-200/40 data-[active=true]:bg-blue-100 data-[active=true]:text-[#294889] data-[active=true]:hover:bg-blue-50 data-[active=true]:hover:text-[#294889] aria-expanded:hover:bg-blue-50 aria-expanded:hover:text-[#294889] data-[active=false]:bg-transparent data-[active=false]:text-blue-100 data-[active=false]:hover:bg-white/10 data-[active=false]:hover:text-white focus-visible:ring-2 focus-visible:ring-blue-200 focus-visible:ring-offset-2 focus-visible:ring-offset-[#294889] group-data-[collapsible=icon]:size-11! group-data-[collapsible=icon]:p-0! motion-reduce:transition-none [&_svg]:size-6"
                     >
                       {item.icon}
-                      <span>{item.title}</span>
+                      <span className="sr-only">{item.title}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
@@ -192,40 +190,56 @@ React.useEffect(() => {
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
-        <SidebarFooter>
-          
-        </SidebarFooter>
       </Sidebar>
       {/* This is the second sidebar */}
       {/* We disable collapsible and let it fill remaining space */}
-      <Sidebar collapsible="none" className="hidden flex-1 md:flex">
-        <SidebarHeader className="gap-3.5 border-b p-4">
-            <div className="text-base font-medium text-white">
-              {activeItem?.title}
-            </div>
+      <Sidebar
+        collapsible="none"
+        id={panelId}
+        role="region"
+        aria-labelledby={headingId}
+        hidden={!open}
+        className="hidden min-w-0 flex-1 bg-blue-50 bg-none text-[#294889] md:flex hidden:hidden"
+      >
+        <SidebarHeader className="gap-1 border-b border-blue-100 bg-white px-5 py-5">
+          <p className="text-xs font-medium tracking-wide text-blue-700">Story tools</p>
+          <h2 id={headingId} className="text-lg font-semibold leading-snug">
+            {activeItem.title}
+          </h2>
         </SidebarHeader>
-        <SidebarContent>
-          <SidebarGroup className="px-0">
+        <SidebarContent className="p-4">
+          <SidebarGroup>
             {/*grid-cols-2 and image mapping should only be for drawing mode and border button (this will be worked in next sprint) */}
-            <SidebarGroupContent className="grid grid-cols-2 gap-2 p-4">
-  {images.map((img) => (
-    <button
-      key={img.src}
-      type="button"
-      onClick={() => {
-        // do something with the image, e.g. add it to your canvas
-      }}
-      className="aspect-square overflow-hidden rounded-md border bg-background hover:ring-2 hover:ring-sidebar-ring"
-    >
-      <img
-        src={img.src}
-        alt={img.name}
-        loading="lazy"
-        className="size-full object-contain p-1"
-      />
-    </button>
-  ))}
-</SidebarGroupContent>
+            <SidebarGroupContent className="grid grid-cols-2 gap-3">
+              {images.length === 0 && (
+                <div className="col-span-2 rounded-2xl border border-blue-100 bg-white px-4 py-6 text-center">
+                  <div aria-hidden="true" className="mx-auto mb-3 flex size-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600 [&_svg]:size-6">
+                    {activeItem.icon}
+                  </div>
+                  <p className="text-sm font-medium">{activeItem.title}</p>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                    This tool is coming soon.
+                  </p>
+                </div>
+              )}
+              {images.map((img) => (
+                <button
+                  key={img.src}
+                  type="button"
+                  onClick={() => {
+                    // do something with the image, e.g. add it to your canvas
+                  }}
+                  className="aspect-square overflow-hidden rounded-xl border border-blue-100 bg-white transition-colors hover:border-blue-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 motion-reduce:transition-none"
+                >
+                  <img
+                    src={img.src}
+                    alt={img.name}
+                    loading="lazy"
+                    className="size-full object-contain p-1"
+                  />
+                </button>
+              ))}
+            </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
       </Sidebar>
