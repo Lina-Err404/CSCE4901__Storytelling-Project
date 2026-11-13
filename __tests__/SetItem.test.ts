@@ -130,4 +130,25 @@ describe("story Supabase authentication", () => {
       }),
     })
   })
+
+  test("does not load a story for an account outside the configured test students", async () => {
+    const getSession = jest.spyOn(supabase.auth, "getSession")
+    getSession.mockResolvedValue({
+      data: { session: { ...session, user: { ...user, id: "another-student" } } },
+      error: null,
+    })
+    const fetchMock = jest.fn()
+    global.fetch = fetchMock
+
+    render(React.createElement(SetItem, {
+      storyId: "story-id",
+      studentId: "profile-id",
+      students: ["profile-id"],
+    }))
+
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "This Supabase account does not match one of the configured test students.",
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
 })

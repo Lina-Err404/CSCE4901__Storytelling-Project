@@ -146,7 +146,7 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
 
     // Load stories through the API; Realtime only triggers a fresh authorized API read.
     useEffect(() => {
-        if (authLoading || !session) return
+        if (authLoading || !session || !studentsKey.split(",").includes(session.user.id)) return
         const load = async () => {
             setLoading(true)
             try {
@@ -261,6 +261,18 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
 
     if (authLoading) return <p className="ml-10 text-neutral-500">Checking Supabase session…</p>
     if (!session) return <StorySignIn initialError={authError} onSignedIn={setSession} />
+    if (!studentsKey.split(",").includes(session.user.id)) {
+        return (
+            <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-3 p-6">
+                <p role="alert" className="text-center text-red-600">
+                    This Supabase account does not match one of the configured test students.
+                </p>
+                <button type="button" onClick={signOut} className="text-neutral-700 underline">
+                    Sign out
+                </button>
+            </div>
+        )
+    }
     if (loading) return <p className="ml-10 text-neutral-500">Opening the book…</p>
 
     return (
