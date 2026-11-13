@@ -4,8 +4,8 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { User } from "@supabase/supabase-js"
 import { CoverBook, CoverFrame } from "@/components/auth/CoverArtwork";
 import { logIn, signUp } from "./Login_Signup_Backend/authServiceSB";
-// Need to find the equivalent function in Supabase for authConfigurationMissing!
-//import { authConfigurationMissing } from "./firebase-client";
+// This is currently located in a commit to main v v v
+import { supabaseConfigurationMissing } from "./supabase-lobbies/supabase-client.ts";
 
 type AuthView =
   | "roleSelection"
@@ -240,10 +240,9 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
               </button>
               <p id="login-note" className="form-note" role="status">
                 {submissionNotice //||
-                  // !!Need to find equivalent function in Supabase
-                  //(authConfigurationMissing
-                    //? "Set the public Supabase configuration before signing in."
-                    //: "Sign in with your teacher account to open the host lobby.")
+                  (supabaseConfigurationMissing
+                    ? "Set the public Supabase configuration before signing in."
+                    : "Sign in with your teacher account to open the host lobby.")
                     }
               </p>
             </form>
@@ -358,10 +357,9 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
               </button>
               <p id="signup-note" className="form-note" role="status">
                 {submissionNotice //||
-                // !!Need to find equivalent function in Supabase
-                  //(authConfigurationMissing
-                    //? "Set the public Supabase configuration before creating an account."
-                    //: "Create your teacher account to host classroom lobbies.")
+                  (supabaseConfigurationMissing
+                    ? "Set the public Supabase configuration before creating an account."
+                    : "Create your teacher account to host classroom lobbies.")
                     }
               </p>
             </form>

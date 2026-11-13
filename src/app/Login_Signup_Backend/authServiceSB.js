@@ -1,13 +1,6 @@
 "use client";
 
-import { createClient } from "@supabase/supabase-js"; // for supabase's function
-
-// Initialize Supabase client with environment variables for URL and key
-// MOVE TO A DIFFERENT FILE
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL, 
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+import { supabase } from "./supabase-client";
 
 // Use Supabase to sign up the user
 // Accepts email, password, first name, last name, and preferences from user input and returns the user data
