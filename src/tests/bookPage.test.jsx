@@ -4,9 +4,9 @@ import "@testing-library/jest-dom"
 import BookPage from "../app/creating-stories/components/bookPage"
 
 const pages = [
-  { id: "amy", label: "amy’s story", text: "amy text", mine: false, drawing: null },
-  { id: "ben", label: "Your story", text: "ben text", mine: true, drawing: null },
-  { id: "cal", label: "cal’s story", text: "", mine: false, drawing: null },
+  { id: "amy", name: "amy", label: "amy’s story", text: "amy text", mine: false, drawing: null },
+  { id: "ben", name: "ben", label: "Your story", text: "ben text", mine: true, drawing: null },
+  { id: "cal", name: "cal", label: "cal’s story", text: "", mine: false, drawing: null },
 ]
 
 const setup = (overrides = {}) => {
@@ -17,7 +17,7 @@ const setup = (overrides = {}) => {
     mode: "writing",
     onTurn: jest.fn(),
     onJump: jest.fn(),
-    onChangeText: jest.fn(),
+    onChangeDocument: jest.fn(),
     onSave: jest.fn(),
     saved: true,
     error: false,
@@ -46,11 +46,17 @@ afterEach(() => {
 })
 
 describe("rendering", () => {
-  test("owned page in writing mode is an editable textarea", () => {
+  test("owned writing page has a resizable rich-text editor", () => {
     setup()
-    expect(screen.getByRole("textbox")).toHaveValue("ben text")
+    expect(screen.getByRole("textbox")).toHaveTextContent("ben text")
     expect(screen.getByText("Your story")).toBeInTheDocument()
     expect(screen.getByText("Your drawing")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Bold" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Italic" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Underline" })).toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "Font family" })).toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "Font size" })).toBeInTheDocument()
+    expect(screen.getByRole("textbox").parentElement.parentElement).toHaveStyle({ resize: "both" })
   })
 
   test("someone else's page is read-only", () => {
@@ -80,10 +86,55 @@ describe("rendering", () => {
 })
 
 describe("editing", () => {
-  test("typing calls onChangeText with the new value", () => {
+  test("typing calls onChangeDocument with plain rich-text content", () => {
     const { props } = setup()
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "hello" } })
-    expect(props.onChangeText).toHaveBeenCalledWith("hello")
+    const editor = screen.getByRole("textbox")
+    editor.innerHTML = "hello"
+    fireEvent.input(editor)
+    expect(props.onChangeDocument).toHaveBeenCalledWith({
+      version: 1,
+      runs: [{ text: "hello", marks: {} }],
+    })
+  })
+
+  test("selected text formatting is represented in the saved document", () => {
+    const { props } = setup()
+    const editor = screen.getByRole("textbox")
+    const selection = window.getSelection()
+    const range = document.createRange()
+    range.selectNodeContents(editor)
+    selection.removeAllRanges()
+    selection.addRange(range)
+
+    const originalExecCommand = document.execCommand
+    const execCommand = jest.fn((command) => {
+      const activeSelection = window.getSelection()
+      const selectedRange = activeSelection.getRangeAt(0)
+      const wrapper = document.createElement(command === "bold" ? "strong" : "em")
+      wrapper.appendChild(selectedRange.extractContents())
+      selectedRange.insertNode(wrapper)
+      activeSelection.removeAllRanges()
+      const nextRange = document.createRange()
+      nextRange.selectNodeContents(wrapper)
+      activeSelection.addRange(nextRange)
+      return true
+    })
+    Object.defineProperty(document, "execCommand", { configurable: true, value: execCommand })
+
+    try {
+      fireEvent.mouseDown(screen.getByRole("button", { name: "Bold" }))
+      fireEvent.click(screen.getByRole("button", { name: "Bold" }))
+      expect(props.onChangeDocument).toHaveBeenLastCalledWith({
+        version: 1,
+        runs: [{ text: "ben text", marks: { bold: true } }],
+      })
+    } finally {
+      if (originalExecCommand) {
+        Object.defineProperty(document, "execCommand", { configurable: true, value: originalExecCommand })
+      } else {
+        delete document.execCommand
+      }
+    }
   })
 
   test.each([
@@ -165,7 +216,7 @@ describe("page turning", () => {
     expect(props.onTurn).toHaveBeenCalledWith("prev")
   })
 
-  test("the textarea is not editable while a page is turning", () => {
+  test("the editor is not editable while a page is turning", () => {
     setup()
     expect(screen.getByRole("textbox")).toBeInTheDocument()
     next()

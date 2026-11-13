@@ -1,6 +1,6 @@
 # Storytelling Server Modules
 
-The API uses Firebase Admin only. `src/firebase.js` loads the repository-root `.env` with dotenv and initializes Application Default Credentials using `GOOGLE_APPLICATION_CREDENTIALS`.
+The existing class, lobby, and socket features use Firebase Admin. `src/firebase.js` loads the repository-root `.env` with dotenv and initializes Application Default Credentials using `GOOGLE_APPLICATION_CREDENTIALS`.
 
 ## Wiring
 
