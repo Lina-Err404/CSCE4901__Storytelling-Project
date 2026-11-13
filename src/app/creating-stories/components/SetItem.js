@@ -18,18 +18,34 @@ function toWritingDocument(document, text = "") {
 }
 
 async function storyApi(path, options = {}) {
-    if (!auth) throw new Error("Firebase authentication is not configured.")
-    await auth.authStateReady()
-    const user = auth.currentUser
-    if (!user) throw new Error("Sign in to load or save your story.")
-    const token = await user.getIdToken()
+    const devBypassEnabled = process.env.NODE_ENV !== "production" &&
+        process.env.NEXT_PUBLIC_ALLOW_DEV_MODE === "true"
+    const devStudentUid = process.env.NEXT_PUBLIC_TEST_STUDENT_UID?.trim()
+    let user = null
+    if (auth) {
+        await auth.authStateReady()
+        user = auth.currentUser
+    }
+
+    const headers = new Headers(options.headers)
+    if (options.body && !headers.has("Content-Type")) {
+        headers.set("Content-Type", "application/json")
+    }
+    if (user) {
+        headers.set("Authorization", `Bearer ${await user.getIdToken()}`)
+    } else if (devBypassEnabled && devStudentUid) {
+        headers.set("x-test-student-uid", devStudentUid)
+    } else if (devBypassEnabled) {
+        throw new Error("Set NEXT_PUBLIC_TEST_STUDENT_UID to use the local story auth bypass.")
+    } else if (!auth) {
+        throw new Error("Firebase authentication is not configured.")
+    } else {
+        throw new Error("Sign in to load or save your story.")
+    }
+
     const response = await fetch(`/api${path}`, {
         ...options,
-        headers: {
-            Authorization: `Bearer ${token}`,
-            ...(options.body ? { "Content-Type": "application/json" } : {}),
-            ...options.headers,
-        },
+        headers,
     })
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(payload.error || `Story request failed (${response.status})`)
