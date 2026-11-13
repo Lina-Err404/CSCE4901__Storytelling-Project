@@ -1,20 +1,33 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import db from '@/src/utils/firestore'
-import { collection, onSnapshot } from "@firebase/firestore"
+import supabase from '@/src/utils/supabase'
 
-const ListItems = () => {
+const ListItems = ({ storyId }) => {
     const [items, setItems] = useState([])
 
     useEffect(() => {
-        // listens for changes, so the list updates after a submit or delete
-        const unsubscribe = onSnapshot(collection(db, 'items'), (snapshot) => {
-            setItems(snapshot.docs.map((doc) => ({...doc.data(), id: doc.id }))) // map items with ids
-        })
+        const load = async () => {
+            const { data, error } = await supabase
+                .from('story_segments')
+                .select('segment_id, writing_content')
+                .eq('story_id', storyId)
+            if (error) {
+                console.log('Error reading segments: ', error)
+                return
+            }
+            setItems(data.map((row) => ({ id: row.segment_id, name: row.writing_content }))) // map items with ids
+        }
 
-        return () => unsubscribe() // stop listening when the component unmounts
-    }, [])
+        load()
+        // listens for changes, so the list updates after a submit or delete
+        const channel = supabase
+            .channel(`list-${storyId}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'story_segments', filter: `story_id=eq.${storyId}` }, load)
+            .subscribe()
+
+        return () => { supabase.removeChannel(channel) } // stop listening when the component unmounts
+    }, [storyId])
 
     return (
         <div>
