@@ -19,6 +19,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const { admin, db } = require('./firebase');
 const { createRequireStudent, createRequireTeacher } = require('./auth');
+const { createRequireSupabaseStudent } = require('./supabaseAuth');
 const {
   createClassesRouter,
   createLobbyRouter,
@@ -31,6 +32,7 @@ const port = Number(process.env.PORT || 4000);
 
 const requireTeacher = createRequireTeacher(admin);
 const requireStudent = createRequireStudent(admin);
+const requireStoryStudent = createRequireSupabaseStudent({ getSupabase: getSupabaseClient });
 const app = express();
 const server = http.createServer(app);
 let io;
@@ -46,7 +48,7 @@ app.use(createLobbyRouter({
   jwtSecret: process.env.JWT_SECRET,
   getIo: () => io,
 }));
-app.use(createStoryRouter({ requireStudent, getSupabase: getSupabaseClient }));
+app.use(createStoryRouter({ requireSupabaseStudent: requireStoryStudent, getSupabase: getSupabaseClient }));
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((error, req, res, next) => {
   if (res.headersSent) return next(error);

@@ -4,6 +4,8 @@ const { createStoryRouter } = require('../src/storyRoutes');
 
 const STUDENT_PROFILE_ID = '00000000-0000-4000-8000-000000000001';
 const OTHER_PROFILE_ID = '00000000-0000-4000-8000-000000000002';
+const TEACHER_PROFILE_ID = '00000000-0000-4000-8000-000000000008';
+const UNLINKED_USER_ID = '00000000-0000-4000-8000-000000000009';
 const STORY_ID = '00000000-0000-4000-8000-000000000003';
 const ROOM_ID = '00000000-0000-4000-8000-000000000004';
 const LOBBY_ID = '00000000-0000-4000-8000-000000000005';
@@ -108,8 +110,9 @@ function createSupabaseMock(seed) {
 function seedData() {
   return {
     profiles: [
-      { id: STUDENT_PROFILE_ID, firebase_uid: 'firebase-student' },
-      { id: OTHER_PROFILE_ID, firebase_uid: 'firebase-other-student' },
+      { id: STUDENT_PROFILE_ID, role: 'student' },
+      { id: OTHER_PROFILE_ID, role: 'student' },
+      { id: TEACHER_PROFILE_ID, role: 'teacher' },
     ],
     stories: [{
       story_id: STORY_ID,
@@ -165,8 +168,8 @@ function createApp(supabase) {
   app.use(express.json());
   app.use(createStoryRouter({
     getSupabase: () => supabase,
-    requireStudent(req, res, next) {
-      req.user = { uid: req.get('x-firebase-uid') || 'firebase-student', role: 'student' };
+    requireSupabaseStudent(req, res, next) {
+      req.user = { uid: req.get('x-supabase-uid') || STUDENT_PROFILE_ID };
       return next();
     },
   }));
@@ -295,7 +298,7 @@ describe('Supabase-backed story routes', () => {
     );
     const response = await request(createApp(createSupabaseMock(seed)))
       .get(`/stories/${STORY_ID}`)
-      .set('x-firebase-uid', 'firebase-other-student');
+      .set('x-supabase-uid', OTHER_PROFILE_ID);
 
     expect(response.status).toBe(403);
     expect(response.body).toEqual({ error: 'Forbidden' });
@@ -318,12 +321,20 @@ describe('Supabase-backed story routes', () => {
     expect(invalid.status).toBe(400);
   });
 
-  test('requires an explicit Firebase-to-profile mapping', async () => {
+  test('requires the Supabase Auth user ID to match a student profile ID', async () => {
     const response = await request(createApp(createSupabaseMock(seedData())))
       .get(`/stories/${STORY_ID}`)
-      .set('x-firebase-uid', 'unlinked-firebase-user');
+      .set('x-supabase-uid', UNLINKED_USER_ID);
 
     expect(response.status).toBe(403);
     expect(response.body.error).toMatch(/not linked/i);
+  });
+
+  test('rejects Supabase Auth accounts linked to teacher profiles', async () => {
+    const response = await request(createApp(createSupabaseMock(seedData())))
+      .get(`/stories/${STORY_ID}`)
+      .set('x-supabase-uid', TEACHER_PROFILE_ID);
+
+    expect(response.status).toBe(403);
   });
 });

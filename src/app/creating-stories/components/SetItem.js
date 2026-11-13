@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react"
 import supabase from '@/src/utils/supabase'
-import { auth } from "@/src/app/firebase-client"
 import BookPage from "./bookPage"
 
 const EMPTY_DOCUMENT = { version: 1, runs: [] }
@@ -18,30 +17,14 @@ function toWritingDocument(document, text = "") {
 }
 
 async function storyApi(path, options = {}) {
-    const devBypassEnabled = process.env.NODE_ENV !== "production" &&
-        process.env.NEXT_PUBLIC_ALLOW_DEV_MODE === "true"
-    const devStudentUid = process.env.NEXT_PUBLIC_TEST_STUDENT_UID?.trim()
-    let user = null
-    if (auth) {
-        await auth.authStateReady()
-        user = auth.currentUser
-    }
-
+    const { data: { session }, error } = await supabase.auth.getSession()
+    if (error) throw error
+    if (!session) throw new Error("Sign in with your Supabase account to load or save your story.")
     const headers = new Headers(options.headers)
     if (options.body && !headers.has("Content-Type")) {
         headers.set("Content-Type", "application/json")
     }
-    if (user) {
-        headers.set("Authorization", `Bearer ${await user.getIdToken()}`)
-    } else if (devBypassEnabled && devStudentUid) {
-        headers.set("x-test-student-uid", devStudentUid)
-    } else if (devBypassEnabled) {
-        throw new Error("Set NEXT_PUBLIC_TEST_STUDENT_UID to use the local story auth bypass.")
-    } else if (!auth) {
-        throw new Error("Firebase authentication is not configured.")
-    } else {
-        throw new Error("Sign in to load or save your story.")
-    }
+    headers.set("Authorization", `Bearer ${session.access_token}`)
 
     const response = await fetch(`/api${path}`, {
         ...options,
@@ -50,6 +33,70 @@ async function storyApi(path, options = {}) {
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(payload.error || `Story request failed (${response.status})`)
     return payload
+}
+
+function StorySignIn({ initialError, onSignedIn }) {
+    const [email, setEmail] = useState("")
+    const [password, setPassword] = useState("")
+    const [error, setError] = useState(initialError ?? "")
+    const [submitting, setSubmitting] = useState(false)
+
+    const signIn = async (event) => {
+        event.preventDefault()
+        setSubmitting(true)
+        setError("")
+        try {
+            const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+            if (signInError) throw signInError
+            if (!data.session) throw new Error("Supabase did not return an authenticated session.")
+            onSignedIn(data.session)
+        } catch (reason) {
+            setError(reason instanceof Error ? reason.message : String(reason))
+        } finally {
+            setSubmitting(false)
+        }
+    }
+
+    return (
+        <div className="flex min-h-0 w-full flex-1 items-center justify-center p-6">
+            <form onSubmit={signIn} className="w-full max-w-sm space-y-4 rounded-lg border bg-white p-6 shadow-sm">
+                <div>
+                    <h2 className="text-lg font-semibold text-neutral-900">Sign in to your story</h2>
+                    <p className="mt-1 text-sm text-neutral-600">Use your Supabase account.</p>
+                </div>
+                <label className="block space-y-1 text-sm text-neutral-700">
+                    <span>Email</span>
+                    <input
+                        type="email"
+                        autoComplete="email"
+                        required
+                        value={email}
+                        onChange={(event) => setEmail(event.target.value)}
+                        className="w-full rounded border border-neutral-300 px-3 py-2"
+                    />
+                </label>
+                <label className="block space-y-1 text-sm text-neutral-700">
+                    <span>Password</span>
+                    <input
+                        type="password"
+                        autoComplete="current-password"
+                        required
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                        className="w-full rounded border border-neutral-300 px-3 py-2"
+                    />
+                </label>
+                {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+                <button
+                    type="submit"
+                    disabled={submitting}
+                    className="w-full rounded bg-neutral-900 px-4 py-2 font-medium text-white disabled:opacity-50"
+                >
+                    {submitting ? "Signing in…" : "Sign in"}
+                </button>
+            </form>
+        </div>
+    )
 }
 
 // each student has 2 pages in the book, writing and drawing
@@ -64,13 +111,44 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
     const [index, setIndex] = useState(Math.max(0, selectedIndex)) // the page showing on the right
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(false)
+    const [authLoading, setAuthLoading] = useState(true)
+    const [session, setSession] = useState(null)
+    const [authError, setAuthError] = useState("")
 
     const myIndex = students.findIndex((id) => stories[id]?.assignedToYou)
     const ownedStudentId = myIndex >= 0 ? students[myIndex] : studentId
 
+    useEffect(() => {
+        let mounted = true
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+            if (!mounted) return
+            setSession(nextSession)
+            setAuthError("")
+            setAuthLoading(false)
+        })
+
+        supabase.auth.getSession().then(({ data, error: sessionError }) => {
+            if (!mounted) return
+            if (sessionError) setAuthError(sessionError.message)
+            setSession(data.session)
+            setAuthLoading(false)
+        }).catch((reason) => {
+            if (!mounted) return
+            setAuthError(reason instanceof Error ? reason.message : String(reason))
+            setAuthLoading(false)
+        })
+
+        return () => {
+            mounted = false
+            subscription.unsubscribe()
+        }
+    }, [])
+
     // Load stories through the API; Realtime only triggers a fresh authorized API read.
     useEffect(() => {
+        if (authLoading || !session) return
         const load = async () => {
+            setLoading(true)
             try {
                 const result = await storyApi(`/stories/${storyId}`)
                 const next = {}
@@ -102,10 +180,11 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
             .subscribe()
 
         return () => { supabase.removeChannel(channel) }
-    }, [storyId, studentsKey])
+    }, [authLoading, session, storyId, studentsKey])
 
     // get the display name of every student in the book
     useEffect(() => {
+        if (!session) return
         const loadNames = async () => {
             const { data, error: err } = await supabase
                 .from('profiles')
@@ -120,7 +199,7 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
             setNames(next)
         }
         loadNames()
-    }, [studentsKey])
+    }, [session, studentsKey])
 
     const pages = students.map((id) => {
         const writingDocument = id === ownedStudentId && draft !== null
@@ -170,21 +249,42 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
         setIndex((i) => i + (dir === "next" ? 1 : -1))
     }
 
+    const signOut = async () => {
+        try {
+            const { error: signOutError } = await supabase.auth.signOut()
+            if (signOutError) throw signOutError
+        } catch (reason) {
+            console.error('Error signing out of story account:', reason)
+            setAuthError(reason instanceof Error ? reason.message : String(reason))
+        }
+    }
+
+    if (authLoading) return <p className="ml-10 text-neutral-500">Checking Supabase session…</p>
+    if (!session) return <StorySignIn initialError={authError} onSignedIn={setSession} />
     if (loading) return <p className="ml-10 text-neutral-500">Opening the book…</p>
 
     return (
-        <BookPage
-            pages={pages}
-            index={index}
-            myIndex={myIndex >= 0 ? myIndex : selectedIndex}
-            mode={mode}
-            onTurn={turn}
-            onJump={() => setIndex(myIndex)}
-            onChangeDocument={setDraft}
-            onSave={save}
-            saved={saved}
-            error={error}
-        />
+        <div className="relative flex min-h-0 w-full flex-1 flex-col">
+            <div className="flex shrink-0 items-center justify-end gap-3 px-6 py-1 text-sm">
+                <span className="text-neutral-700">{session.user.email}</span>
+                <button type="button" onClick={signOut} className="text-neutral-700 underline">
+                    Sign out
+                </button>
+                {authError && <span role="alert" className="text-red-600">{authError}</span>}
+            </div>
+            <BookPage
+                pages={pages}
+                index={index}
+                myIndex={myIndex >= 0 ? myIndex : selectedIndex}
+                mode={mode}
+                onTurn={turn}
+                onJump={() => setIndex(myIndex)}
+                onChangeDocument={setDraft}
+                onSave={save}
+                saved={saved}
+                error={error}
+            />
+        </div>
     )
 }
 

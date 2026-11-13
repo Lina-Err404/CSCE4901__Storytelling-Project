@@ -44,13 +44,14 @@ function asyncRoute(handler) {
   };
 }
 
-async function getStudentProfile(supabase, firebaseUid) {
+async function getStudentProfile(supabase, supabaseUserId) {
   const profile = await getData(supabase
     .from('profiles')
-    .select('id')
-    .eq('firebase_uid', firebaseUid)
+    .select('id, role')
+    .eq('id', supabaseUserId)
     .maybeSingle());
-  if (!profile) throw httpError(403, 'Student account is not linked to a story profile');
+  if (!profile) throw httpError(403, 'Supabase account is not linked to a story profile');
+  if (profile.role !== 'student') throw httpError(403, 'Forbidden');
   return profile;
 }
 
@@ -200,10 +201,10 @@ function validTextBoxSize(textBoxSize) {
   );
 }
 
-function createStoryRouter({ requireStudent, getSupabase = getSupabaseClient }) {
+function createStoryRouter({ requireSupabaseStudent, getSupabase = getSupabaseClient }) {
   const router = express.Router();
 
-  router.get('/stories/:storyId', requireStudent, asyncRoute(async (req, res) => {
+  router.get('/stories/:storyId', requireSupabaseStudent, asyncRoute(async (req, res) => {
     const { storyId } = req.params;
     if (!UUID_PATTERN.test(storyId)) throw httpError(400, 'Invalid storyId');
 
@@ -248,7 +249,7 @@ function createStoryRouter({ requireStudent, getSupabase = getSupabaseClient }) 
     });
   }));
 
-  router.put('/story-segments/:segmentId', requireStudent, asyncRoute(async (req, res) => {
+  router.put('/story-segments/:segmentId', requireSupabaseStudent, asyncRoute(async (req, res) => {
     const { segmentId } = req.params;
     const body = req.body;
     const hasWritingContent = body && Object.prototype.hasOwnProperty.call(body, 'writingContent');
@@ -311,7 +312,7 @@ function createStoryRouter({ requireStudent, getSupabase = getSupabaseClient }) 
     });
   }));
 
-  router.put('/story-segments/:segmentId/drawing', requireStudent, asyncRoute(async (req, res) => {
+  router.put('/story-segments/:segmentId/drawing', requireSupabaseStudent, asyncRoute(async (req, res) => {
     const { segmentId } = req.params;
     const drawingData = req.body?.drawingData;
     if (!UUID_PATTERN.test(segmentId)) throw httpError(400, 'Invalid segmentId');

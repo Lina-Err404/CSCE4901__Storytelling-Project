@@ -1,12 +1,19 @@
 import React from "react"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import SetItem from "../src/app/creating-stories/components/SetItem"
-
-jest.mock("@/src/app/firebase-client", () => ({ auth: null }))
+import supabase from "@/src/utils/supabase"
 
 jest.mock("@/src/utils/supabase", () => ({
   __esModule: true,
   default: {
+    auth: {
+      getSession: jest.fn(),
+      onAuthStateChange: jest.fn(() => ({
+        data: { subscription: { unsubscribe: jest.fn() } },
+      })),
+      signInWithPassword: jest.fn(),
+      signOut: jest.fn(),
+    },
     channel: () => ({
       on() { return this },
       subscribe() { return this },
@@ -24,7 +31,10 @@ jest.mock("../src/app/creating-stories/components/bookPage", () => {
   const React = jest.requireActual("react")
   return {
     __esModule: true,
-    default: ({ onChangeDocument, onSave }) => React.createElement(
+    default: ({ onChangeDocument, onSave }: {
+      onChangeDocument: (document: { version: number; runs: { text: string; marks: Record<string, boolean> }[] }) => void
+      onSave: () => void
+    }) => React.createElement(
       React.Fragment,
       null,
       React.createElement("button", {
@@ -38,30 +48,40 @@ jest.mock("../src/app/creating-stories/components/bookPage", () => {
   }
 })
 
-describe("story API local development auth", () => {
-  const originalEnv = {
-    allowDevMode: process.env.NEXT_PUBLIC_ALLOW_DEV_MODE,
-    testStudentUid: process.env.NEXT_PUBLIC_TEST_STUDENT_UID,
-    nodeEnv: process.env.NODE_ENV,
-  }
+describe("story Supabase authentication", () => {
   const originalFetch = global.fetch
+  const user = {
+    id: "profile-id",
+    app_metadata: { provider: "email", providers: ["email"] },
+    user_metadata: {},
+    aud: "authenticated",
+    created_at: "2026-01-01T00:00:00.000Z",
+    email: "student@example.test",
+  }
+  const session = {
+    access_token: "supabase-access-token",
+    token_type: "bearer" as const,
+    expires_in: 3600,
+    refresh_token: "refresh-token",
+    user,
+  }
 
   afterEach(() => {
-    process.env.NEXT_PUBLIC_ALLOW_DEV_MODE = originalEnv.allowDevMode
-    process.env.NEXT_PUBLIC_TEST_STUDENT_UID = originalEnv.testStudentUid
-    process.env.NODE_ENV = originalEnv.nodeEnv
-    if (originalFetch) {
-      global.fetch = originalFetch
-    } else {
-      delete global.fetch
-    }
-    jest.restoreAllMocks()
+    global.fetch = originalFetch
+    jest.clearAllMocks()
   })
 
-  test("uses the configured test UID to load and save stories without Firebase sign-in", async () => {
-    process.env.NEXT_PUBLIC_ALLOW_DEV_MODE = "true"
-    process.env.NEXT_PUBLIC_TEST_STUDENT_UID = "linked-test-uid"
-    process.env.NODE_ENV = "development"
+  test("signs in with Supabase and uses its token to load and save stories", async () => {
+    const getSession = jest.spyOn(supabase.auth, "getSession")
+    getSession
+      .mockResolvedValueOnce({ data: { session: null }, error: null })
+      .mockResolvedValue({ data: { session }, error: null })
+    const signInWithPassword = jest.spyOn(supabase.auth, "signInWithPassword")
+    signInWithPassword.mockResolvedValue({
+      data: { session, user },
+      error: null,
+    })
+
     const fetchMock = jest.fn()
       .mockResolvedValueOnce({
         ok: true,
@@ -84,13 +104,23 @@ describe("story API local development auth", () => {
     global.fetch = fetchMock
 
     render(React.createElement(SetItem, { storyId: "story-id", studentId: "profile-id" }))
+    fireEvent.change(await screen.findByLabelText("Email"), {
+      target: { value: "student@example.test" },
+    })
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "test-password" } })
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }))
+
     fireEvent.click(await screen.findByRole("button", { name: "Edit story" }))
     fireEvent.click(screen.getByRole("button", { name: "Save story" }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    expect(signInWithPassword).toHaveBeenCalledWith({
+      email: "student@example.test",
+      password: "test-password",
+    })
     for (const [, options] of fetchMock.mock.calls) {
-      expect(options.headers.get("x-test-student-uid")).toBe("linked-test-uid")
-      expect(options.headers.has("Authorization")).toBe(false)
+      expect(options.headers.get("Authorization")).toBe("Bearer supabase-access-token")
+      expect(options.headers.has("x-test-student-uid")).toBe(false)
     }
     expect(fetchMock.mock.calls[1][1]).toMatchObject({
       method: "PUT",
@@ -99,19 +129,5 @@ describe("story API local development auth", () => {
         writingDocument: { version: 1, runs: [{ text: "saved story", marks: {} }] },
       }),
     })
-  })
-
-  test("does not use the test UID when running in production", async () => {
-    process.env.NEXT_PUBLIC_ALLOW_DEV_MODE = "true"
-    process.env.NEXT_PUBLIC_TEST_STUDENT_UID = "linked-test-uid"
-    process.env.NODE_ENV = "production"
-    const fetchMock = jest.fn()
-    global.fetch = fetchMock
-    const consoleError = jest.spyOn(console, "error").mockImplementation(() => {})
-
-    render(React.createElement(SetItem, { storyId: "story-id", studentId: "profile-id" }))
-
-    await waitFor(() => expect(consoleError).toHaveBeenCalled())
-    expect(fetchMock).not.toHaveBeenCalled()
   })
 })

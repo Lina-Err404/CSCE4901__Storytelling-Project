@@ -26,19 +26,13 @@ Run the API with `npm run dev:api` and the Firestore tests with `npm test` from 
 - The root `firestore.rules` denies direct client reads and writes; service access is through the Admin-backed API.
 - Existing lowercase lobby modules remain for the earlier prototype; the R13 route is mounted from `lobbyRoutes.js` and uses `Lobbies/{code}`.
 
-## R39 Story API
+## Story API
 
-R39 adds Supabase-backed story reads and student saves without changing Firebase authentication or the existing Firestore features. The authenticated Firebase UID is looked up in `public.profiles.firebase_uid`; all segment assignment and breakout-room checks use the matched Supabase profile UUID.
+Story routes verify Supabase Auth bearer tokens. Firebase Auth remains in use for other API routes. The authenticated Supabase Auth user ID must equal the corresponding `public.profiles.id`; the profile must have the `student` role. Segment assignment and breakout-room checks continue to use that profile UUID.
 
-Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in the repository-root `.env`. Keep the service-role key server-only. Apply `supabase/migrations/20261106133900_r39_story_firebase_link.sql` to add the Firebase UID mapping and segment save timestamp, then link each student's Firebase UID to the existing profile UUID using a trusted database administrator:
+Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in the repository-root `.env`. Keep the service-role key server-only. The browser uses `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Apply `supabase/migrations/20261106133900_r39_story_firebase_link.sql` for the story segment `updated_at` column and trigger; its `firebase_uid` field is no longer used by story authentication.
 
-```sql
-UPDATE public.profiles
-SET firebase_uid = '<Firebase Auth UID>'
-WHERE id = '<existing Supabase profile UUID>';
-```
-
-The mapping must be unique and populated before the student can access a story. Existing segment `student_id` values must refer to the corresponding `profiles.id`. Story routes additionally require an active `lobby_participants` row and a matching `breakout_participants` row for the story's room.
+Story routes require an active `lobby_participants` row and a matching `breakout_participants` row for the story's room.
 
 Routes mounted on the API server (available to the web app through the `/api` rewrite in `next.config.ts`):
 
