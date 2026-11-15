@@ -13,7 +13,7 @@ import '../creating-stories/creating-stories.css'
 
 // 2 pages in the book per student (drawing page on the left, writing page on the right), in this order. TODO: change this in later sprint to use the assigned places / sections
 // TESTING ONLY: the signed-in Supabase user must match one of these students.
-const STUDENTS = ["96947d15-5338-4a61-8d17-834c1404018a", "04c62b9d-7620-4b76-8b88-66518b304f13", "34b572fe-53c3-44bd-a3bc-b1a8a76db7ee"]
+const STUDENTS = ["96947d15-5338-4a61-8d17-834c1404018a", "04c62b9d-7620-4b76-8b88-66518b304f13", "34b572fe-53c3-44bd-a3bc-b1a8a76db7ee", "ce89c365-eba1-4883-84a3-96667cd11657"]
 // TESTING ONLY: Replace with the room's story later
 const STORY_ID = "b06ff1ad-f383-4b77-be1f-7ed5192ef14d"
 
