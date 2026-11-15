@@ -22,7 +22,7 @@ const { createTimerRouter } = require('./timerRoutes');
 const { createRequireStudent, createRequireTeacher } = require('./auth');
 const { supabase } = require('./supabase');
 const {
-  createRequireStudent: createSupabaseRequireStudent,
+  createRequireSupabaseStudent,
   createRequireTeacher: createSupabaseRequireTeacher,
   createRequireUser: createSupabaseRequireUser,
 } = require('./supabaseAuth');
@@ -42,7 +42,8 @@ const port = Number(process.env.PORT || 4000);
 const requireTeacher = createRequireTeacher(admin);
 const requireStudent = createRequireStudent(admin);
 const supabaseRequireTeacher = supabase && createSupabaseRequireTeacher(supabase);
-const supabaseRequireStudent = supabase && createSupabaseRequireStudent(supabase);
+const requireStoryStudent = supabase && createRequireSupabaseStudent(supabase);
+const supabaseRequireStudent = requireStoryStudent;
 const supabaseRequireUser = supabase && createSupabaseRequireUser(supabase);
 const app = express();
 const server = http.createServer(app);
@@ -86,9 +87,16 @@ if (supabase) {
     jwtSecret: process.env.JWT_SECRET,
     getIo: () => supabaseIo,
   }));
+  app.use(createStoryRouter({
+    requireSupabaseStudent: requireStoryStudent,
+    getSupabase: getSupabaseClient,
+  }));
 } else {
   app.use('/supabase', (req, res) => res.status(503).json({
     error: 'Supabase lobby features are not configured',
+  }));
+  app.use(['/stories', '/story-segments'], (req, res) => res.status(503).json({
+    error: 'Supabase story features are not configured',
   }));
 }
 
