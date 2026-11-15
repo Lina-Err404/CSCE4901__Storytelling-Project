@@ -1,61 +1,93 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
+import { createClient } from '@supabase/supabase-js';
 import StartingPrompt from './StartingPrompt';
 
-// mock the global fetch so our test doesn't try to hit Fikayo's backend, cast as jest.Mock to fix TS compilation
-global.fetch = jest.fn(() =>
-  Promise.resolve({
-    json: () => Promise.resolve({ error: "Starting prompt saved when it gets connected." }),
-    status: 501,
-    ok: false
-  })
-) as jest.Mock;
+jest.mock('@supabase/supabase-js', () => ({ createClient: jest.fn() }));
 
-describe('StartingPrompt Component', () => {
-  it('renders the component with default custom prompt view', () => {
-    render(<StartingPrompt />);
-    // check that our new presentation slide text is loading properly
-    expect(screen.getByText('Assign Starting Prompt')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Enter a story starter or prompt for your students...')).toBeInTheDocument();
+const lobby = { id: '11111111-1111-4111-8111-111111111111', name: 'English Lobby', code: 'ABC123' };
+const fetchMock = jest.fn();
+const getSession = jest.fn();
+const signInWithPassword = jest.fn();
+const originalFetch = global.fetch;
+
+beforeEach(() => {
+  process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'public-test-key';
+  (createClient as jest.Mock).mockReturnValue({ auth: { getSession, signInWithPassword } });
+  getSession.mockReset();
+  getSession.mockResolvedValue({ data: { session: { access_token: 'teacher-token' } }, error: null });
+  signInWithPassword.mockReset();
+  fetchMock.mockReset();
+  fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ lobbies: [lobby] }) });
+  global.fetch = fetchMock;
+});
+
+afterEach(() => {
+  global.fetch = originalFetch;
+});
+
+async function chooseLobby() {
+  await screen.findByRole('option', { name: 'English Lobby (ABC123)' });
+  fireEvent.change(screen.getByLabelText('Supabase Lobby'), { target: { value: lobby.id } });
+}
+
+it('saves a custom prompt to the selected lobby with the Supabase session', async () => {
+  fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+  render(<StartingPrompt />);
+  await chooseLobby();
+  fireEvent.change(screen.getByLabelText('Prompt Text'), { target: { value: '  Once upon a time…  ' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Assign to Classroom' }));
+
+  expect(await screen.findByText('Starting prompt settings saved.')).toBeInTheDocument();
+  expect(fetchMock).toHaveBeenLastCalledWith('/api/starting-prompts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer teacher-token' },
+    body: JSON.stringify({
+      lobbyId: lobby.id, promptType: 'custom', promptText: 'Once upon a time…', assignmentType: 'entire-class',
+    }),
   });
+});
 
-  it('hides the text area when Pull a Random Prompt is selected', () => {
-    render(<StartingPrompt />);
-    const modeSelect = screen.getByLabelText('Prompt Mode');
-    
-    // simulate the teacher picking "random" from the dropdown
-    fireEvent.change(modeSelect, { target: { value: 'random' } });
-    
-    // the custom text area should disappear
-    expect(screen.queryByPlaceholderText('Enter a story starter or prompt for your students...')).not.toBeInTheDocument();
+it('saves random mode as a setting without including previously entered text', async () => {
+  fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+  render(<StartingPrompt />);
+  await chooseLobby();
+  fireEvent.change(screen.getByLabelText('Prompt Text'), { target: { value: 'Old custom text' } });
+  fireEvent.change(screen.getByLabelText('Prompt Mode'), { target: { value: 'random' } });
+  expect(screen.queryByLabelText('Prompt Text')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Assign to Classroom' }));
+
+  expect(await screen.findByText('Starting prompt settings saved.')).toBeInTheDocument();
+  expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({ promptType: 'random', promptText: '' });
+});
+
+it('requires sign-in before listing lobbies when no Supabase session exists', async () => {
+  getSession.mockResolvedValueOnce({ data: { session: null }, error: null });
+  signInWithPassword.mockResolvedValueOnce({ data: { session: { access_token: 'new-token' } }, error: null });
+  render(<StartingPrompt />);
+  const signIn = await screen.findByRole('button', { name: 'Sign in to Supabase' });
+  expect(screen.getByRole('button', { name: 'Assign to Classroom' })).toBeDisabled();
+  expect(fetchMock).not.toHaveBeenCalled();
+
+  fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'teacher@example.com' } });
+  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'test-password' } });
+  fireEvent.click(signIn);
+  await screen.findByRole('option', { name: 'English Lobby (ABC123)' });
+  expect(signInWithPassword).toHaveBeenCalledWith({ email: 'teacher@example.com', password: 'test-password' });
+  expect(fetchMock).toHaveBeenCalledWith('/api/starting-prompts', {
+    headers: { Authorization: 'Bearer new-token' },
   });
+});
 
-  it('updates the text area value when typing', () => {
-    render(<StartingPrompt />);
-    const textarea = screen.getByPlaceholderText('Enter a story starter or prompt for your students...');
-    
-    // Simulate typing in the custom prompt box
-    fireEvent.change(textarea, { target: { value: 'Once upon a time...' } });
-    
-    expect(textarea).toHaveValue('Once upon a time...');
-  });
+it('reports a rejected write as an error', async () => {
+  fetchMock.mockResolvedValueOnce({ ok: false, status: 403, json: async () => ({ error: 'Teacher access required.' }) });
+  render(<StartingPrompt />);
+  await chooseLobby();
+  fireEvent.change(screen.getByLabelText('Prompt Text'), { target: { value: 'A custom prompt' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Assign to Classroom' }));
 
-  it('calls the submit function and displays a success message when clicked', async () => {
-    render(<StartingPrompt />);
-    
-    // first type something into the custom prompt box so it passes validation
-    const textarea = screen.getByPlaceholderText('Enter a story starter or prompt for your students...');
-    fireEvent.change(textarea, { target: { value: 'Once upon a time in a dark forest...' } });
-
-    // then click the submit button
-    const submitButton = screen.getByText('Assign to Classroom');
-    fireEvent.click(submitButton);
-    
-    // expect our fake fetch to have been called
-    expect(global.fetch).toHaveBeenCalledTimes(1);
-    
-    // check that the UI updated to show our updated success message
-    expect(await screen.findByText('Prompt successfully assigned!')).toBeInTheDocument();
-  });
+  expect(await screen.findByText('Error: Teacher access required.')).toBeInTheDocument();
+  expect(screen.queryByText('Starting prompt settings saved.')).not.toBeInTheDocument();
 });
