@@ -1,5 +1,5 @@
 const express = require('express');
-const { getSupabaseClient } = require('./supabase');
+const { getSupabase: getConfiguredSupabase } = require('./supabase');
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_WRITING_LENGTH = 50000;
@@ -201,7 +201,7 @@ function validTextBoxSize(textBoxSize) {
   );
 }
 
-function createStoryRouter({ requireSupabaseStudent, getSupabase = getSupabaseClient }) {
+function createStoryRouter({ requireSupabaseStudent, getSupabase = getConfiguredSupabase }) {
   const router = express.Router();
 
   router.get('/stories/:storyId', requireSupabaseStudent, asyncRoute(async (req, res) => {

@@ -20,7 +20,7 @@ const { Server } = require('socket.io');
 const { admin, db } = require('./firebase');
 const { createTimerRouter } = require('./timerRoutes');
 const { createRequireStudent, createRequireTeacher } = require('./auth');
-const { supabase } = require('./supabase');
+const { supabase, getSupabase } = require('./supabase');
 const {
   createRequireSupabaseStudent,
   createRequireTeacher: createSupabaseRequireTeacher,
@@ -35,7 +35,6 @@ const {
   createSocketAuth,
   createStoryRouter,
 } = require('./');
-const { getSupabaseClient } = require('./supabase');
 
 const port = Number(process.env.PORT || 4000);
 
@@ -89,7 +88,7 @@ if (supabase) {
   }));
   app.use(createStoryRouter({
     requireSupabaseStudent: requireStoryStudent,
-    getSupabase: getSupabaseClient,
+    getSupabase,
   }));
 } else {
   app.use('/supabase', (req, res) => res.status(503).json({
