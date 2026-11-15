@@ -1,19 +1,37 @@
-const { admin } = require('./firebase');
+const { supabase } = require('./supabase');
+
+const UUID_PATTERN =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function grantTeacher(uid) {
-  if (typeof uid !== 'string' || uid.length < 1 || uid.length > 128) {
-    throw new Error('Pass a Firebase Auth UID as the first argument');
+  if (typeof uid !== 'string' || !UUID_PATTERN.test(uid.trim())) {
+    throw new Error('Pass a valid Supabase Auth user UUID as the first argument');
   }
 
-  const projectId = process.env.GCLOUD_PROJECT || 'demo-storytelling';
-  const app = admin.apps.find((candidate) => candidate.name === '[DEFAULT]')
-    || admin.initializeApp({ projectId });
-  const user = await admin.auth(app).getUser(uid);
-  await admin.auth(app).setCustomUserClaims(uid, {
-    ...user.customClaims,
-    role: 'teacher',
-  });
-  console.log(`Granted teacher role to ${uid}`);
+  const userId = uid.trim();
+
+  if (supabase.auth?.admin) {
+    const { data: userData, error: getUserError } =
+        await supabase.auth.admin.getUserById(userId);
+    if (!getUserError && userData?.user) {
+      await supabase.auth.admin.updateUserById(userId, {
+        app_metadata: {
+          ...userData.user.app_metadata,
+          role: 'teacher',
+        },
+      });
+    }
+  }
+
+  const { error: profileError } = await supabase
+      .from('profiles')
+      .upsert({ id: userId, role: 'teacher' }, { onConflict: 'id' });
+
+  if (profileError) {
+    throw new Error(`Could not update public.profiles: ${profileError.message}`);
+  }
+
+  console.log(`Granted teacher role to ${userId}`);
 }
 
 grantTeacher(process.argv[2]).catch((error) => {
