@@ -5,13 +5,16 @@ import db from '@/src/utils/firestore'
 import { collection, doc, onSnapshot, setDoc } from "@firebase/firestore"
 import BookPage from "./bookPage"
 import OpenPageFlipBook from "./OpenPageFlipBook"
+import StoryWorkspace from "./StoryWorkspace"
 
 // each student has 2 pages in the book, writing and drawing
 // everyone's pages can be read, but a student can only edit their own
-const SetItem = ({ studentId, students = [studentId], mode = "writing", renderer = process.env.NEXT_PUBLIC_BOOK_RENDERER }) => {
+/** @param {{ studentId: string, students?: string[], mode?: "writing" | "drawing", renderer?: string, workspace?: boolean, onSelectStudent?: (id: string) => void }} props */
+const SetItem = ({ studentId, students = [studentId], mode = "writing", renderer = process.env.NEXT_PUBLIC_BOOK_RENDERER, workspace = false, onSelectStudent }) => {
     // Chosen once before mounting. Set NEXT_PUBLIC_BOOK_RENDERER=openpageflip
     // and restart Next.js to opt in locally; the default remains the legacy book.
     const [BookRenderer] = useState(() => renderer === "openpageflip" ? OpenPageFlipBook : BookPage)
+    const Renderer = workspace ? StoryWorkspace : BookRenderer
     const myIndex = students.indexOf(studentId)
 
     const [stories, setStories] = useState({}) // studentId -> saved story text, from Firestore
@@ -70,7 +73,11 @@ const SetItem = ({ studentId, students = [studentId], mode = "writing", renderer
     if (loading) return <p className="ml-10 text-neutral-500">Opening the book…</p>
 
     return (
-        <BookRenderer
+        <Renderer
+            DrawingBook={BookRenderer}
+            studentId={studentId}
+            students={students}
+            onSelectStudent={onSelectStudent}
             pages={pages}
             index={index}
             myIndex={myIndex}

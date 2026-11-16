@@ -1,5 +1,7 @@
 "use client"
 
+import { DEFAULT_STORY_PROMPT } from "./storyPrompt"
+
 type TopBarProps = {
   mode?: "writing" | "drawing"
   onToggleMode?: () => void
@@ -10,7 +12,7 @@ type TopBarProps = {
 function TopBar({
   mode = "writing",
   onToggleMode,
-  prompt = "Write a story about a super hero",
+  prompt = DEFAULT_STORY_PROMPT,
 }: TopBarProps) {
   return (
     <header className="grid min-h-16 w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-3 border-b border-white/10 bg-[#0F1E4B] px-3 py-3 md:grid-cols-[auto_minmax(0,1fr)_auto] md:gap-x-5 md:px-5">

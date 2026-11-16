@@ -1,0 +1,157 @@
+﻿/* Reference artwork: 1670 x 1087, excluding its black caption and margins. */
+.story-screen {
+  --story-cream: #f0eadf; --story-gold: #b1a181; --story-ink: #583019;
+  --story-toolbar-height: 10.3svh;
+  position: relative; width: 100%; height: 100svh; min-height: 560px; overflow: hidden;
+  background: linear-gradient(180deg, #192965 0%, #233e76 43%, #3a6b9b 100%);
+  color: var(--story-ink); font-family: Georgia, "Times New Roman", serif;
+}
+.story-screen button, .story-screen textarea, .story-screen select { font-family: inherit; }
+.story-screen button { cursor: pointer; }
+.story-screen button:disabled { cursor: default; opacity: .58; }
+.story-screen button:focus-visible, .story-screen select:focus-visible, .story-prompt-text:focus-visible { outline: 3px solid #765724; outline-offset: 4px; }
+.story-frame { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.story-frame path { fill: var(--story-cream); stroke: var(--story-gold); stroke-width: 4px; vector-effect: non-scaling-stroke; }
+.story-banner { position: relative; display: flex; align-items: center; justify-content: center; }
+.story-banner > :not(svg) { position: relative; }
+.story-toolbar {
+  position: relative; z-index: 3; height: var(--story-toolbar-height); min-height: 64px;
+  display: flex; align-items: center; justify-content: space-between; padding: 0 5%;
+}
+.story-toolbar > .story-frame path { stroke-width: 6px; }
+.story-toolbar-left { position: relative; display: flex; align-items: center; gap: 1.1vw; height: 100%; }
+.story-toolbar-medallion { display: block; height: 74%; aspect-ratio: 1; border: 1.5px solid #ac8b47; border-radius: 50%; background: #e6cfa1; box-shadow: inset -2px -4px 4px #bca476; }
+.story-gold-control { display: flex; align-items: center; justify-content: center; height: 59%; border: 2.5px solid #ad883d; border-radius: 12px; background: #e6cfa1; color: var(--story-ink); font-size: clamp(21px, 2.35vw, 42px); line-height: 1; box-shadow: inset 0 -3px 3px #c4aa75; }
+.story-screen .story-gold-control:hover { filter: brightness(1.035); }
+.story-timer { width: 11.4vw; font-weight: 400; font-variant-numeric: tabular-nums; }
+.story-mode { position: absolute; left: 51%; transform: translateX(-50%); width: 22.6%; }
+.story-submit { position: relative; width: 15.3vw; background: #f6c965; box-shadow: inset 0 -3px 4px #d1a64c; }
+.story-screen .story-scene { position: relative; display: block; width: 100%; height: calc(100% - var(--story-toolbar-height)); min-height: 0; }
+.story-prompt-panel { position: absolute; z-index: 2; left: 0; top: 5.23%; bottom: 4.1%; width: 24.1%; }
+.story-prompt-panel > .story-frame { z-index: 1; }
+.story-prompt-heading { position: absolute; z-index: 2; top: 5.8%; left: 8.7%; width: 82.1%; height: 6.3%; }
+.story-prompt-heading .story-frame path { fill: #e5ddcc; stroke-width: 2.5px; }
+.story-prompt-heading h1 { margin: 0; font: inherit; font-size: clamp(24px, 2vw, 32px); }
+.story-panel-sections { position: absolute; z-index: 2; top: 15.8%; bottom: 11.5%; left: 8.7%; right: 8.2%; display: flex; flex-direction: column; gap: 14px; }
+.story-panel-sections > .story-prompt-border { position: relative; inset: auto; display: flex; flex-direction: column; flex: 0 1 auto; min-width: 0; min-height: 0; max-height: min(28svh, 260px); padding: 6px; }
+.story-panel-sections > .story-tool-section { max-height: min(32svh, 300px); }
+.story-panel-sections .story-prompt-text { flex: 0 1 auto; min-height: 0; height: auto; padding: 12px; font-size: clamp(16px, 1.2vw, 19px); line-height: 1.45; }
+.story-tool-section[hidden] { display: none; }
+.story-prompt-border { position: absolute; z-index: 2; top: 15.8%; bottom: 11.5%; left: 8.7%; right: 8.2%; padding: 8px; border: 3px solid var(--story-gold); border-radius: 1px; background: #ece1c9; box-shadow: 0 2px 4px #76694b38; }
+.story-prompt-text { width: 100%; height: 100%; overflow: auto; overflow-wrap: anywhere; white-space: pre-wrap; border: 2px solid var(--story-gold); padding: 6% 5.5%; font-size: clamp(18px, 1.7vw, 31px); line-height: 1.45; scrollbar-width: thin; }
+.story-bookmarks { position: absolute; z-index: 0; top: 10.6%; left: 99%; display: flex; flex-direction: column; gap: 4svh; width: 40%; }
+.story-bookmark { position: relative; display: block; width: 66%; height: 7.5svh; min-height: 38px; border: 0; padding: 0; background: transparent; transition: width 160ms ease; }
+.story-bookmark[aria-pressed="true"], .story-bookmark:hover { width: 100%; }
+.story-bookmark-ribbon { position: absolute; inset: 0; display: block; width: 100%; height: 100%; overflow: visible; }
+.story-bookmark-ribbon path { fill: var(--bookmark-fill); stroke: var(--bookmark-stroke); stroke-width: 2.5px; vector-effect: non-scaling-stroke; }
+.story-bookmark-content { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 76%; height: 100%; color: #fff; pointer-events: none; }
+.story-bookmark-icon { flex-shrink: 0; width: clamp(20px, 1.6vw, 28px); height: clamp(20px, 1.6vw, 28px); }
+.story-bookmark-label { font-size: clamp(11px, .78vw, 14px); line-height: 1; }
+.story-bookmark[aria-pressed="true"] .story-bookmark-ribbon { filter: drop-shadow(0 0 2px #ffffff90); }
+.story-bookmark[aria-pressed="true"] .story-bookmark-ribbon path { stroke-width: 3.5px; }
+.story-bookmark[aria-pressed="true"] .story-bookmark-label { font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.story-screen .story-bookmark:focus-visible { outline: none; }
+.story-bookmark:focus-visible .story-bookmark-ribbon path { stroke: #fff; stroke-width: 3px; }
+.story-tool-content { text-align: left; }
+.story-tool-empty { display: grid; grid-template-columns: 24px minmax(0, 1fr); align-items: start; gap: 8px 10px; }
+.story-tool-icon { width: 24px; height: 24px; color: #836638; }
+.story-tool-content h2 { font: inherit; font-weight: 600; }
+.story-tool-content p { grid-column: 2; font-size: .9em; line-height: 1.5; }
+.story-bookmark-red { --bookmark-fill: #d9514e; --bookmark-stroke: #7b3436; }
+.story-bookmark-green { --bookmark-fill: #54b333; --bookmark-stroke: #22492b; }
+.story-bookmark-blue { --bookmark-fill: #4e80cc; --bookmark-stroke: #182d53; }
+.story-bookmark-gold { --bookmark-fill: #d4b352; --bookmark-stroke: #483a24; }
+.story-workspace { position: absolute; left: 24.1%; top: 0; right: 0; bottom: 0; min-width: 0; }
+.story-student-banner { position: absolute; top: 5.23%; left: 30.2%; width: 47.3%; height: 7%; font-size: clamp(22px, 2.35vw, 40px); filter: drop-shadow(0 4px 3px #14254f66); }
+.story-student-banner span { max-width: 88%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.story-student-banner .story-student-picker { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.story-student-banner:focus-within { outline: 3px solid #e6cfa1; outline-offset: 5px; }
+.story-return { position: absolute; top: 13%; left: 30.2%; width: 47.3%; color: var(--story-cream); font-size: 15px; text-decoration: underline; }
+.story-writing-canvas { position: absolute; top: 16.6%; left: 15%; width: 77.6%; height: 55.3%; border: 2px dotted var(--story-gold); border-radius: 20px; overflow: hidden; background: #fff; }
+.story-writing-canvas[hidden] { display: none; }
+.story-writing-canvas textarea { display: block; box-sizing: border-box; width: 100%; height: 100%; margin: 0; border: 0; padding: clamp(20px, 2vw, 36px); resize: none; outline: none; background: #fff; color: var(--story-ink); font-size: clamp(17px, 1.6vw, 28px); line-height: 1.65; }
+.story-writing-canvas:focus-within { outline: 2px solid #ddcba2; outline-offset: 3px; }
+.story-navigation { position: absolute; top: 85.4%; left: 16.4%; width: 75%; height: 7%; filter: drop-shadow(0 5px 4px #14254f66); }
+.story-navigation-content { display: flex; align-items: center; justify-content: center; gap: clamp(12px, 2vw, 32px); width: 100%; height: 100%; padding: 0 9%; font-size: clamp(15px, 1.45vw, 25px); white-space: nowrap; }
+.story-navigation button { height: 46%; border: 2px solid var(--story-gold); border-radius: 999px; line-height: 1; padding: 0 1em; }
+.story-save { background: #e6cfa1; }
+.story-save-status { flex: 0 0 5.5em; text-align: center; white-space: normal; line-height: 1.1; }
+.story-save-status[data-error="true"] { color: #a02e27; font-size: .72em; }
+.story-navigation button:not(:disabled):hover { background: #e9dbbd; }
+.story-workspace[data-mode="drawing"] { left: 56px; }
+.story-workspace[data-mode="drawing"] .story-student-banner { left: 30%; width: 40%; }
+.story-existing-drawing { position: absolute; inset: 16% 0 1%; display: flex; min-height: 0; }
+@media (max-width: 900px) {
+  .story-screen { --story-toolbar-height: 80px; }
+  .story-toolbar { padding-inline: 3%; padding-bottom: 8px; }
+  .story-gold-control { font-size: clamp(18px, 2.6vw, 26px); border-radius: 9px; }
+  .story-toolbar-medallion { height: 62%; }
+  .story-timer { width: 13vw; }
+  .story-mode { width: 28%; }
+  .story-submit { width: 18%; }
+  .story-prompt-panel { width: 28%; }
+  .story-prompt-text { font-size: 18px; }
+  .story-workspace { left: 28%; }
+  .story-student-banner { left: 21%; width: 65%; font-size: 24px; }
+  .story-writing-canvas { left: 17%; width: 78%; height: 60%; }
+  .story-navigation { left: 6%; width: 91%; }
+  .story-navigation-content { padding-inline: 6%; gap: 2%; font-size: 14px; }
+  .story-bookmark-label { display: none; }
+  .story-navigation button { min-height: 28px; padding-inline: 5px; }
+}
+@media (max-width: 600px) {
+  .story-screen { height: auto; min-height: 100svh; overflow: visible; --story-toolbar-height: 76px; }
+  .story-toolbar { height: 76px; min-height: 76px; padding-inline: 12px; }
+  .story-toolbar-left { gap: 6px; }
+  .story-toolbar-medallion { height: 28px; }
+  .story-timer { width: 66px; font-size: 19px; }
+  .story-mode { left: 53%; width: 34%; font-size: clamp(16px, 3.7vw, 21px); }
+  .story-submit { width: 21%; font-size: 19px; }
+  .story-screen .story-scene { display: flex; flex-direction: column; height: auto; min-height: calc(100svh - 76px); padding: 24px 16px; gap: 28px; }
+  .story-prompt-panel { position: relative; top: auto; bottom: auto; width: calc(100% - 48px); height: 250px; flex-shrink: 0; }
+  .story-prompt-heading { top: 16px; left: 8%; height: 35px; }
+  .story-prompt-heading h1 { font-size: 24px; }
+  .story-prompt-border { top: 62px; bottom: 24px; }
+  .story-panel-sections { top: 62px; bottom: 24px; }
+  .story-prompt-panel[data-tool-open="true"] { height: 420px; }
+  .story-prompt-text { padding: 12px; font-size: 18px; }
+  .story-bookmarks { top: 38px; width: 48px; gap: 12px; }
+  .story-bookmark { height: 37px; min-height: 0; }
+  .story-workspace { position: relative; left: auto; right: auto; bottom: auto; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 20px; }
+  .story-student-banner { position: relative; top: auto; left: auto; width: 90%; height: 49px; flex-shrink: 0; }
+  .story-return { position: relative; top: auto; left: auto; width: auto; margin-block: -8px; }
+  .story-writing-canvas { position: relative; left: auto; top: auto; width: 100%; height: 52svh; min-height: 300px; }
+  .story-navigation { position: relative; top: auto; left: auto; width: 100%; height: auto; min-height: 92px; }
+  .story-navigation-content { flex-wrap: wrap; justify-content: center; gap: 8px; padding: 12px 28px; font-size: 16px; }
+  .story-navigation .story-previous, .story-navigation .story-next { flex: 0 0 auto; }
+  .story-navigation .story-save { flex: 0 0 70px; }
+  .story-save-status { flex: 0 0 6em; }
+  .story-workspace[data-mode="drawing"] { left: auto; height: calc(100svh - 124px); }
+  .story-workspace[data-mode="drawing"] .story-student-banner { left: auto; width: 80%; }
+  .story-existing-drawing { inset: 70px -16px 0; }
+}
+@media (prefers-reduced-motion: reduce) { .story-bookmark { transition: none; } }
+
+/* Writing-only compact layout: the canvas gets the full available width.
+   Keep the existing Drawing Mode breakpoints and implementation unchanged. */
+@media (max-width: 760px) {
+  .story-screen[data-mode="writing"] { height: auto; min-height: 100svh; overflow: visible; --story-toolbar-height: 76px; }
+  .story-screen[data-mode="writing"] .story-toolbar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; height: 76px; min-height: 76px; padding: 0 12px 8px; }
+  .story-screen[data-mode="writing"] .story-toolbar-left { gap: 6px; }
+  .story-screen[data-mode="writing"] .story-toolbar-medallion { height: 28px; }
+  .story-screen[data-mode="writing"] .story-timer { width: 66px; height: 44px; font-size: 19px; }
+  .story-screen[data-mode="writing"] .story-mode { position: relative; left: auto; transform: none; justify-self: center; width: 100%; max-width: 260px; height: 44px; font-size: clamp(16px, 2.6vw, 20px); white-space: nowrap; }
+  .story-screen[data-mode="writing"] .story-submit { width: auto; height: 44px; padding-inline: 12px; font-size: 19px; }
+  .story-screen[data-mode="writing"] .story-scene { display: flex; flex-direction: column; height: auto; min-height: calc(100svh - 76px); padding: 24px 16px; gap: 24px; }
+  .story-screen[data-mode="writing"] .story-prompt-panel { position: relative; top: auto; bottom: auto; width: min(320px, calc(100% - 48px)); height: auto; min-height: 260px; flex-shrink: 0; }
+  .story-screen[data-mode="writing"] .story-prompt-heading { top: 16px; left: 8%; height: 35px; }
+  .story-screen[data-mode="writing"] .story-panel-sections { position: relative; inset: auto; margin: 62px 8.2% 24px 8.7%; }
+  .story-screen[data-mode="writing"] .story-bookmarks { top: 38px; width: 48px; gap: 12px; }
+  .story-screen[data-mode="writing"] .story-bookmark { height: 37px; min-height: 0; }
+  .story-screen[data-mode="writing"] .story-workspace { position: relative; inset: auto; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 20px; }
+  .story-screen[data-mode="writing"] .story-student-banner { position: relative; top: auto; left: auto; width: 90%; max-width: 600px; height: 49px; flex-shrink: 0; }
+  .story-screen[data-mode="writing"] .story-return { position: relative; top: auto; left: auto; width: auto; margin-block: -8px; }
+  .story-screen[data-mode="writing"] .story-writing-canvas { position: relative; left: auto; top: auto; width: 100%; height: 55svh; min-height: 300px; }
+  .story-screen[data-mode="writing"] .story-navigation { position: relative; top: auto; left: auto; width: 100%; height: auto; min-height: 92px; }
+  .story-screen[data-mode="writing"] .story-navigation-content { flex-wrap: wrap; justify-content: center; gap: 8px; padding: 12px 28px; font-size: 16px; }
+}

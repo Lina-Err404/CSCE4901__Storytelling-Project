@@ -1,19 +1,15 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import Image from "next/image"
-import SetItem from "@/src/app/creating-stories/components/SetItem"
-import ListItems from "@/src/app/creating-stories/components/ListItems"
-import TopBar from "@/src/app/creating-stories/components/topBar"
+import SetItem from "./components/SetItem"
+import TopBar from "./components/topBar"
 import { AppSidebar } from "@/components/app-sidebar"
-import { Separator } from "@/components/ui/separator"
 import {
   SidebarInset,
   SidebarProvider,
-  SidebarTrigger,
 } from "@/components/ui/sidebar"
 
-import '@/src/app/creating-stories/creating-stories.css'
+import '../creating-stories/creating-stories.css'
 
 // 2 pages in the book per student (drawing page on the left, writing page on the right), in this order. TODO: change this in later sprint to use the assigned places / sections
 const STUDENTS = ["student-1", "student-2", "student-3"]
@@ -89,7 +85,7 @@ export default function Home() {
               </div>
 
               {/*The book. SetItem loads/saves the stories and renders the book (bookPage) */}
-              <SetItem renderer="openpageflip" key={studentId} studentId={studentId} students={STUDENTS} mode={mode} />
+              <SetItem key={studentId} studentId={studentId} students={STUDENTS} mode={mode} />
 
               {/* <ListItems /> */}
             </div>
