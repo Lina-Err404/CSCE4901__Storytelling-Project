@@ -1,24 +1,4 @@
-// R14 – Teacher Review backend.
-// Loads a completed story with its review status, and saves the teacher's
-// feedback and approval to Firestore so they stay after a page refresh.
-//
-// Firestore layout:
-//   stories/{storyId}
-//     title, group, authors, text[]   – the story itself
-//     feedback                        – teacher feedback ("" if none yet)
-//     status                          – "pending" | "approved"
-//     feedbackUpdatedAt, approvedAt   – timestamps
-//
-// The class library (R11) should only show stories where status == "approved".
-// Keep the ReviewStatus values stable so R11 can rely on them.
-import {
-  doc,
-  getDoc,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-} from "firebase/firestore";
-import { db } from "./firebase";
+import { supabase } from "../src/app/Login_Signup_Backend/supabase-client";
 
 export type ReviewStatus = "pending" | "approved";
 
@@ -32,22 +12,23 @@ export type Story = {
   status: ReviewStatus;
 };
 
-function storyRef(storyId: string) {
-  return doc(db, "stories", storyId);
+function requireSupabase() {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  return supabase;
 }
 
 // Load a completed story and its current review status.
 // Returns null if the story does not exist. This function only reads.
 export async function loadStory(storyId: string): Promise<Story | null> {
-  const snapshot = await getDoc(storyRef(storyId));
-
-  if (!snapshot.exists()) {
-    return null;
-  }
-
-  const data = snapshot.data();
+  const { data, error } = await requireSupabase()
+    .from("stories")
+    .select("story_id, title, group, authors, text, feedback, status")
+    .eq("story_id", storyId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
   return {
-    id: storyId,
+    id: data.story_id,
     title: data.title ?? "",
     group: data.group ?? "",
     authors: data.authors ?? "",
@@ -59,24 +40,27 @@ export async function loadStory(storyId: string): Promise<Story | null> {
 
 // Save the teacher's feedback for a story. An empty string clears it.
 export async function saveFeedback(storyId: string, feedback: string) {
-  await updateDoc(storyRef(storyId), {
-    feedback,
-    feedbackUpdatedAt: serverTimestamp(),
-  });
+  const { error } = await requireSupabase()
+    .from("stories")
+    .update({ feedback, feedback_updated_at: new Date().toISOString() })
+    .eq("story_id", storyId);
+  if (error) throw error;
 }
 
 // Mark a story as approved so it can be added to the class library.
 export async function approveStory(storyId: string) {
-  await updateDoc(storyRef(storyId), {
-    status: "approved",
-    approvedAt: serverTimestamp(),
-  });
+  const { error } = await requireSupabase()
+    .from("stories")
+    .update({ status: "approved", approved_at: new Date().toISOString() })
+    .eq("story_id", storyId);
+  if (error) throw error;
 }
 
 // Development only: creates a sample story to review.
 // Never called automatically; run it on purpose when you need test data.
 export async function seedSampleStory(storyId = "story-1") {
-  await setDoc(storyRef(storyId), {
+  const { error } = await requireSupabase().from("stories").upsert({
+    story_id: storyId,
     title: "The Secret Door",
     group: "Group 1",
     authors: "Heather, Marcus, and Sam",
@@ -87,6 +71,6 @@ export async function seedSampleStory(storyId = "story-1") {
     ],
     feedback: "",
     status: "pending",
-    createdAt: serverTimestamp(),
   });
+  if (error) throw error;
 }
