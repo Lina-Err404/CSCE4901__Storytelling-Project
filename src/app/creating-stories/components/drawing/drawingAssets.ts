@@ -4,9 +4,10 @@ const characterFiles = ["20220728_125054.png", "Untitled128_20261017210110.png",
 const propFiles = ["Untitled48_20240711083849.png", "Untitled48_20240711102837.png", "Untitled48_20240711102842.png", "Untitled48_20240711102844.png", "Untitled48_20240713232210.png", "Untitled96_20260326001950.png", "Untitled96_20260402132903.png"]
 const backgroundFiles = ["Untitled103_20260424135732.png", "Untitled103_20260424135815.png", "Untitled116.png", "Untitled48_20240711082655.png", "Untitled48_20240711120258.png", "Untitled90_20260213150211.png", "Untitled96_20260325145211.png"]
 const inFolder = (folder: string, files: string[]) => files.map((name) => ({ name, src: `/images/${folder}/${name}` }))
+const stampNames = ["Pancake friend", "Blue-haired adventurer", "Green adventurer", "Wizard", "White silhouette", "Black silhouette", "Grass strip", "Grass platform", "Wide grass platform", "Flag", "Wooden post", "City buildings", "Small buildings"]
 
 export const drawingAssets = {
   shapes: [],
-  stamps: [...inFolder("character", characterFiles), ...inFolder("props", propFiles)],
+  stamps: [...inFolder("character", characterFiles), ...inFolder("props", propFiles)].map((asset, index) => ({ ...asset, name: stampNames[index] })),
   background: inFolder("background", backgroundFiles),
 }

@@ -1,7 +1,7 @@
 // jsdom has no drawing backend. Observe commands; browser checks cover real pixels.
 export function makeDrawingContext() {
   return {
-    clearRect: jest.fn(), save: jest.fn(), restore: jest.fn(), setTransform: jest.fn(),
+    drawImage: jest.fn(), clearRect: jest.fn(), save: jest.fn(), restore: jest.fn(), setTransform: jest.fn(),
     beginPath: jest.fn(), arc: jest.fn(), fill: jest.fn(), moveTo: jest.fn(),
     quadraticCurveTo: jest.fn(), lineTo: jest.fn(), stroke: jest.fn(),
     lineWidth: 0, lineCap: "butt", lineJoin: "miter", strokeStyle: "", fillStyle: "", globalAlpha: 1,

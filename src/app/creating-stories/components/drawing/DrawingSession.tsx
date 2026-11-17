@@ -6,7 +6,11 @@ import { emptyHistory, recordAction, replayHistory, type DrawingHistory, type Dr
 
 import type { ShapeType } from "./drawingShapes"
 
+import type { StampAsset } from "./drawingStamps"
+
 type DrawingSession = {
+  selectedStamp: StampAsset | null
+  selectStamp: (stamp: StampAsset) => void
   selectedShape: ShapeType | null
   selectShape: (shape: ShapeType) => void
   drawings: Record<string, readonly DrawingStroke[]>
@@ -44,9 +48,11 @@ export function DrawingSessionProvider({ children }: { children: ReactNode }) {
     })
   }, [])
   const [tool, selectTool] = useState<DrawingTool>("pencil")
+  const [selectedStamp, setSelectedStamp] = useState<StampAsset | null>(null)
   const [selectedShape, setSelectedShape] = useState<ShapeType | null>(null)
-  const setTool = useCallback((next: DrawingTool) => { selectTool(next); setSelectedShape(null) }, [])
-  const selectShape = useCallback((shape: ShapeType) => { setSelectedShape(shape); selectTool(current => current === "eraser" ? "pencil" : current) }, [])
+  const selectStamp = useCallback((stamp: StampAsset) => { setSelectedStamp({ ...stamp }); setSelectedShape(null); selectTool(current => current === "eraser" ? "pencil" : current) }, [])
+  const setTool = useCallback((next: DrawingTool) => { selectTool(next); setSelectedShape(null); setSelectedStamp(null) }, [])
+  const selectShape = useCallback((shape: ShapeType) => { setSelectedShape(shape); setSelectedStamp(null); selectTool(current => current === "eraser" ? "pencil" : current) }, [])
   const [color, setColor] = useState(drawingTools.pencil.color)
   const [opacity, setOpacity] = useState(1)
   const [rainbowPosition, setRainbowPosition] = useState(0)
@@ -59,7 +65,7 @@ export function DrawingSessionProvider({ children }: { children: ReactNode }) {
     const action: DrawingAction = { type: "stroke", stroke }
     setHistories((current) => ({ ...current, [key]: recordAction(current[key] ?? emptyHistory, action) }))
   }, [])
-  const value = useMemo(() => ({ selectedShape, selectShape, drawings, histories, changeHistory, tool, setTool, color, setColor, opacity, setOpacity, sizes, changeSize, rainbowPosition, setRainbowPosition, appendStroke }), [selectedShape, selectShape, setTool, drawings, histories, changeHistory, tool, color, opacity, sizes, changeSize, rainbowPosition, appendStroke])
+  const value = useMemo(() => ({ selectedStamp, selectStamp, selectedShape, selectShape, drawings, histories, changeHistory, tool, setTool, color, setColor, opacity, setOpacity, sizes, changeSize, rainbowPosition, setRainbowPosition, appendStroke }), [selectedStamp, selectStamp, selectedShape, selectShape, setTool, drawings, histories, changeHistory, tool, color, opacity, sizes, changeSize, rainbowPosition, appendStroke])
   return <DrawingContext.Provider value={value}>{children}</DrawingContext.Provider>
 }
 

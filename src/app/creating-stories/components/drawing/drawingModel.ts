@@ -1,4 +1,5 @@
 import { renderShape, type ShapeGeometry } from "./drawingShapes"
+import { renderStamp, type StampGeometry } from "./drawingStamps"
 
 export type DrawingTool = "pencil" | "paintbrush" | "eraser"
 export type DrawingPoint = { x: number; y: number }
@@ -10,6 +11,7 @@ export type DrawingStroke = {
   width: number
   opacity: number
   shape?: ShapeGeometry
+  stamp?: StampGeometry
 }
 
 export const drawingTools = {
@@ -43,7 +45,9 @@ export function renderDrawing(ctx: CanvasRenderingContext2D, strokes: readonly D
     ctx.globalCompositeOperation = stroke.tool === "eraser" ? "destination-out" : "source-over"
     ctx.globalAlpha = stroke.tool === "eraser" ? 1 : stroke.opacity
     ctx.beginPath()
-    if (stroke.shape) {
+    if (stroke.stamp) {
+      renderStamp(ctx, stroke.stamp, width, height)
+    } else if (stroke.shape) {
       renderShape(ctx, stroke.shape, stroke.points, width, height)
     } else if (points.length === 1) {
       ctx.arc(points[0].x, points[0].y, stroke.width / 2, 0, Math.PI * 2)

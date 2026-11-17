@@ -116,3 +116,11 @@
 .drawing-shape-option { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; width: 100%; height: 100%; padding: 5px; font-size: clamp(11px, 1vw, 16px); }
 .drawing-shape-option svg { width: 65%; flex: 1; min-height: 0; fill: none; stroke: currentColor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round; }
 .drawing-shape-option[aria-pressed="true"] { box-shadow: inset 0 0 0 3px #765724; }
+
+.drawing-stamp-option { display: block; width: 100%; height: 100%; padding: 6px; }
+.drawing-stamp-option[aria-pressed="true"] { box-shadow: inset 0 0 0 3px #765724; }
+.drawing-placement-status { position: absolute; left: 8px; right: 8px; bottom: calc(100% + 6px); font: 12px/1.2 Georgia, serif; color: #f0eadf; text-align: center; pointer-events: none; }
+
+@media (max-width: 760px) {
+  .drawing-placement-status { top: 8px; bottom: auto; z-index: 1; padding: 4px 8px; border: 1px solid var(--story-gold); border-radius: 6px; background: #f0eadfee; color: var(--story-ink); line-height: 1.3; }
+}

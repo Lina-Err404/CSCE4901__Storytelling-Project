@@ -9,6 +9,9 @@ import { installDrawingCanvas, makeDrawingContext } from "./helpers/drawingCanva
 import { rainbowColor } from "../src/app/creating-stories/components/drawing/drawingColors"
 import { emptyHistory, recordAction, replayHistory } from "../src/app/creating-stories/components/drawing/drawingHistory"
 import { shapeGeometry, shapeTypes, shapePath } from "../src/app/creating-stories/components/drawing/drawingShapes"
+import { drawingAssets } from "../src/app/creating-stories/components/drawing/drawingAssets"
+import { loadStamp, stampGeometry } from "../src/app/creating-stories/components/drawing/drawingStamps"
+import { readFileSync } from "node:fs"
 
 let backend: ReturnType<typeof installDrawingCanvas>
 beforeEach(() => {
@@ -125,6 +128,86 @@ function Harness() {
     <output data-testid="model">{JSON.stringify(drawings)}</output>
   </>
 }
+
+test("all thirteen catalogue stamps are existing transparent PNGs with valid dimensions", () => {
+  expect(drawingAssets.stamps).toHaveLength(13)
+  for (const asset of drawingAssets.stamps) {
+    const png = readFileSync(`public${asset.src}`)
+    expect(png.subarray(1, 4).toString()).toBe("PNG")
+    expect(png.readUInt32BE(16)).toBeGreaterThan(0)
+    expect(png.readUInt32BE(20)).toBeGreaterThan(0)
+    expect(png[25]).toBe(6) // RGBA originals, no replacement paths.
+  }
+})
+
+test("stamp geometry preserves aspect ratio, supports default clicks and reverse drags, and stays inside bounds", () => {
+  for (const ratio of [.2, 1, 7]) for (const end of [{ x: .1, y: .1 }, { x: 1, y: 1 }, { x: .9, y: .1 }]) {
+    const stamp = stampGeometry(drawingAssets.stamps[0], ratio, { x: .9, y: .1 }, end, 400, 200)
+    expect(stamp.width * 400 / (stamp.height * 200)).toBeCloseTo(ratio)
+    expect(stamp.width).toBeGreaterThan(0); expect(stamp.height).toBeGreaterThan(0)
+    expect(stamp.x).toBeGreaterThanOrEqual(0); expect(stamp.y).toBeGreaterThanOrEqual(0)
+    expect(stamp.x + stamp.width).toBeLessThanOrEqual(1.00001)
+    expect(stamp.y + stamp.height).toBeLessThanOrEqual(1.00001)
+  }
+})
+
+test("stamp loading is deduplicated, failures are retryable, and image operations preserve compositing order", async () => {
+  let constructions = 0
+  jest.spyOn(window, "Image").mockImplementation(() => {
+    constructions++
+    return { naturalWidth: 400, naturalHeight: 200, onload: null, onerror: null,
+      set src(value: string) { queueMicrotask(() => { if (value.includes("missing") && constructions === 2) (this as unknown as { onerror?: () => void }).onerror?.(); else (this as unknown as { onload?: () => void }).onload?.() }) },
+    } as unknown as HTMLImageElement
+  })
+  const first = loadStamp("/test-stamp.png")
+  expect(loadStamp("/test-stamp.png")).toBe(first)
+  await first
+  await expect(loadStamp("/missing.png")).rejects.toThrow()
+  await expect(loadStamp("/missing.png")).resolves.toBeDefined()
+  const ctx = makeDrawingContext() as ReturnType<typeof makeDrawingContext> & { globalCompositeOperation: string }
+  const order: string[] = []
+  ctx.drawImage.mockImplementation(() => { order.push(ctx.globalCompositeOperation) })
+  ctx.stroke.mockImplementation(() => { order.push(ctx.globalCompositeOperation) })
+  const stamp = stampGeometry({ src: "/test-stamp.png", name: "Test" }, 2, { x: .2, y: .2 }, { x: .6, y: .6 }, 400, 200)
+  const imageStroke: DrawingStroke = { tool: "pencil", ...drawingTools.pencil, points: [{ x: .2, y: .2 }], stamp }
+  renderDrawing(ctx as unknown as CanvasRenderingContext2D, [imageStroke, { ...imageStroke, stamp: undefined, tool: "eraser", points: [{ x: .1, y: .1 }, { x: .8, y: .8 }] }, imageStroke], 800, 400)
+  expect(order).toEqual(["source-over", "destination-out", "source-over"])
+  const [, , , width, height] = ctx.drawImage.mock.calls[0]
+  expect(width / height).toBeCloseTo(2)
+})
+
+test.each(["mouse", "touch", "pen"])("%s stamp placement supports preview, cancellation, history and retained original opacity", async (pointerType) => {
+  jest.spyOn(window, "Image").mockImplementation(() => ({ naturalWidth: 430, naturalHeight: 377, onload: null, onerror: null, set src(_value: string) { queueMicrotask(() => (this as unknown as { onload?: () => void }).onload?.()) } }) as unknown as HTMLImageElement)
+  render(<DrawingSessionProvider><Harness /></DrawingSessionProvider>)
+  fireEvent.click(screen.getByRole("button", { name: "Stamps" }))
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: `Place stamp ${drawingAssets.stamps[0].name}` })) })
+  const stampButton = screen.getByRole("button", { name: `Place stamp ${drawingAssets.stamps[0].name}` })
+  expect(stampButton).toHaveAttribute("aria-pressed", "true")
+  fireEvent.change(screen.getByRole("slider", { name: "Transparency" }), { target: { value: 50 } })
+  fireEvent.pointerMove(canvas(), { pointerType, clientX: 200, clientY: 100 })
+  act(() => backend.flushFrame())
+  expect(backend.context(canvas()).drawImage).toHaveBeenCalled()
+  const model = () => JSON.parse(screen.getByTestId("model").textContent!)[drawingPageKey("student-1")] ?? []
+  expect(model()).toHaveLength(0)
+  await act(async () => { draw(canvas(), pointerType) })
+  const original = model()
+  expect(original).toHaveLength(1)
+  expect(original[0]).toMatchObject({ opacity: .5, stamp: { src: drawingAssets.stamps[0].src, aspectRatio: 430 / 377 } })
+  fireEvent.pointerDown(canvas(), { pointerId: 8, pointerType, button: 0, clientX: 140, clientY: 70 })
+  fireEvent.pointerMove(canvas(), { pointerId: 8, pointerType, clientX: 300, clientY: 150 })
+  fireEvent.pointerCancel(canvas(), { pointerId: 8 })
+  expect(model()).toEqual(original)
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Undo" })) }); expect(model()).toHaveLength(0)
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Redo" })) }); expect(model()).toEqual(original)
+  for (const name of ["Toggle mode", "Toggle mode", "Select student", "Select student"]) await act(async () => { fireEvent.click(screen.getByText(name)) })
+  expect(model()).toEqual(original)
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Delete All" })); })
+  await act(async () => { fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete All" })) }); expect(model()).toHaveLength(0)
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Undo" })) }); expect(model()).toEqual(original)
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Use pencil" })) })
+  await act(async () => { draw(canvas(), pointerType) })
+  expect(model()[1].stamp).toBeUndefined()
+})
 
 test.each(shapeTypes)("%s places one styled outline operation, previews without committing, and supports history", (type) => {
   render(<DrawingSessionProvider><Harness /></DrawingSessionProvider>)
