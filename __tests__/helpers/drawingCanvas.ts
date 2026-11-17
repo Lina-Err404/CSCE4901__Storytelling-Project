@@ -9,6 +9,9 @@ export function makeDrawingContext() {
 }
 
 export function installDrawingCanvas() {
+  const originalPath = global.Path2D, originalMatrix = global.DOMMatrix
+  global.Path2D = class { addPath = jest.fn(); constructor(public path?: string) {} } as unknown as typeof Path2D
+  global.DOMMatrix = class { translateSelf() { return this }; scaleSelf() { return this } } as unknown as typeof DOMMatrix
   let rect = { left: 100, top: 50, width: 400, height: 200 }
   const contexts = new WeakMap<HTMLCanvasElement, ReturnType<typeof makeDrawingContext>>()
   const frames = new Map<number, FrameRequestCallback>()
@@ -65,6 +68,7 @@ export function installDrawingCanvas() {
       observers.filter(({ disconnect }) => !disconnect.mock.calls.length).forEach(({ callback }) => callback())
     },
     restore() {
+      global.Path2D = originalPath; global.DOMMatrix = originalMatrix
       jest.restoreAllMocks()
       global.ResizeObserver = originalObserver
       window.PointerEvent = originalPointer

@@ -1,12 +1,14 @@
 import React, { StrictMode, useCallback, useState } from "react"
 import "@testing-library/jest-dom"
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import DrawingSurface from "../src/app/creating-stories/components/drawing/DrawingSurface"
 import DrawingWorkspace from "../src/app/creating-stories/components/drawing/DrawingWorkspace"
 import { DrawingSessionProvider, useDrawingSession } from "../src/app/creating-stories/components/drawing/DrawingSession"
 import { drawingPageKey, drawingTools, normalizeDrawingPoint, renderDrawing, type DrawingStroke } from "../src/app/creating-stories/components/drawing/drawingModel"
 import { installDrawingCanvas, makeDrawingContext } from "./helpers/drawingCanvas"
 import { rainbowColor } from "../src/app/creating-stories/components/drawing/drawingColors"
+import { emptyHistory, recordAction, replayHistory } from "../src/app/creating-stories/components/drawing/drawingHistory"
+import { shapeGeometry, shapeTypes, shapePath } from "../src/app/creating-stories/components/drawing/drawingShapes"
 
 let backend: ReturnType<typeof installDrawingCanvas>
 beforeEach(() => {
@@ -124,6 +126,143 @@ function Harness() {
   </>
 }
 
+test.each(shapeTypes)("%s places one styled outline operation, previews without committing, and supports history", (type) => {
+  render(<DrawingSessionProvider><Harness /></DrawingSessionProvider>)
+  fireEvent.click(screen.getByRole("button", { name: "Red" }))
+  fireEvent.click(screen.getByRole("button", { name: `Draw ${type.toLowerCase()}` }))
+  expect(screen.getByRole("button", { name: `Draw ${type.toLowerCase()}` })).toHaveAttribute("aria-pressed", "true")
+  fireEvent.pointerDown(canvas(), { pointerId: 1, button: 0, clientX: 460, clientY: 230 })
+  fireEvent.pointerMove(canvas(), { pointerId: 1, clientX: 140, clientY: 70 })
+  act(() => backend.flushFrame())
+  expect(screen.getByTestId("model")).toHaveTextContent("{}")
+  expect(backend.context(canvas()).stroke).toHaveBeenCalled()
+  fireEvent.pointerUp(canvas(), { pointerId: 1, clientX: 140, clientY: 70 })
+  const read = () => JSON.parse(screen.getByTestId("model").textContent!)[drawingPageKey("student-1")]
+  const original = read()
+  expect(original).toHaveLength(1)
+  expect(original[0]).toMatchObject({ color: "#ed2f18", width: 2.5, opacity: 1, shape: { type } })
+  fireEvent.click(screen.getByRole("button", { name: "Undo" })); expect(read()).toEqual([])
+  fireEvent.click(screen.getByRole("button", { name: "Redo" })); expect(read()).toEqual(original)
+  for (const name of ["Toggle mode", "Toggle mode", "Select student", "Select student"]) fireEvent.click(screen.getByText(name))
+  expect(read()).toEqual(original)
+  fireEvent.click(screen.getByRole("button", { name: "Use eraser" }))
+  draw(canvas()); expect(read()[1].tool).toBe("eraser")
+  fireEvent.click(screen.getByRole("button", { name: "Delete All" }))
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete All" }))
+  expect(read()).toEqual([])
+  fireEvent.click(screen.getByRole("button", { name: "Undo" })); expect(read()[0]).toEqual(original[0])
+})
+
+test("shape geometry handles all directions, equal pixel squares, and invalid dimensions", () => {
+  for (const end of [{ x: .8, y: .9 }, { x: .2, y: .1 }, { x: .8, y: .1 }, { x: .2, y: .9 }]) {
+    const square = shapeGeometry("Square", { x: .5, y: .5 }, end, 800, 400)!
+    expect(square.width * 800).toBeCloseTo(square.height * 400)
+    expect(square.x).toBeLessThanOrEqual(.5); expect(square.y).toBeLessThanOrEqual(.5)
+  }
+  expect(shapeGeometry("Rectangle", { x: .5, y: .5 }, { x: .5, y: .9 }, 400, 200)).toBeNull()
+  expect(shapeGeometry("Line", { x: .5, y: .5 }, { x: .5, y: .9 }, 400, 200)).not.toBeNull()
+  expect(shapePath("Star").match(/L/g)).toHaveLength(9)
+})
+
+test.each(["touch", "pen"])("%s shape placement captures starting properties and returns to freehand", (pointerType) => {
+  render(<DrawingSessionProvider><Harness /></DrawingSessionProvider>)
+  fireEvent.click(screen.getByRole("button", { name: "Use paintbrush" }))
+  fireEvent.click(screen.getByRole("button", { name: "Increase brush size" }))
+  fireEvent.change(screen.getByRole("slider", { name: "Transparency" }), { target: { value: 50 } })
+  fireEvent.click(screen.getByRole("button", { name: "Red" }))
+  fireEvent.click(screen.getByRole("button", { name: "Draw rectangle" }))
+  fireEvent.pointerDown(canvas(), { pointerId: 7, pointerType, button: 0, clientX: 140, clientY: 70 })
+  fireEvent.click(screen.getByRole("button", { name: "Blue" }))
+  fireEvent.click(screen.getByRole("button", { name: "Increase brush size" }))
+  fireEvent.change(screen.getByRole("slider", { name: "Transparency" }), { target: { value: 25 } })
+  fireEvent.pointerMove(canvas(), { pointerId: 7, pointerType, clientX: 460, clientY: 230 })
+  fireEvent.pointerUp(canvas(), { pointerId: 7, pointerType, clientX: 460, clientY: 230 })
+  const read = () => JSON.parse(screen.getByTestId("model").textContent!)[drawingPageKey("student-1")]
+  expect(read()[0]).toMatchObject({ width: 9, color: "#ed2f18", opacity: .5, shape: { type: "Rectangle", x: .1, y: .1, width: .8, height: .8 } })
+  fireEvent.click(screen.getByRole("button", { name: "Use paintbrush" }))
+  draw(canvas(), pointerType)
+  expect(read()[1]).toMatchObject({ width: 10, color: "#2457e9", opacity: .25 })
+  expect(read()[1].shape).toBeUndefined()
+  expect(read()[0].opacity).toBe(.5)
+})
+
+test.each(["pointercancel", "lostpointercapture"])("%s discards a shape preview; tiny shapes also create no history", (event) => {
+  const commit = jest.fn()
+  const { unmount } = render(<DrawingSurface selectedShape="Circle" studentId="student-1" owned tool="pencil" strokes={[]} onCommit={commit} />)
+  fireEvent.pointerDown(canvas(), { pointerId: 1, button: 0, clientX: 140, clientY: 70 })
+  fireEvent.pointerMove(canvas(), { pointerId: 1, clientX: 300, clientY: 150 })
+  fireEvent(canvas(), new PointerEvent(event, { pointerId: 1 }))
+  fireEvent.pointerUp(canvas(), { pointerId: 1, clientX: 300, clientY: 150 })
+  fireEvent.pointerDown(canvas(), { pointerId: 2, button: 0, clientX: 140, clientY: 70 })
+  fireEvent.pointerUp(canvas(), { pointerId: 2, clientX: 140, clientY: 70 })
+  fireEvent.pointerDown(canvas(), { pointerId: 3, button: 0, clientX: 140, clientY: 70 })
+  unmount()
+  expect(commit).not.toHaveBeenCalled()
+  expect(backend.frames.size).toBe(0)
+})
+
+test("history replays erasing and clearing in order and discards obsolete redo actions", () => {
+  const stroke: DrawingStroke = { tool: "pencil", ...drawingTools.pencil, points: [{ x: .5, y: .5 }] }
+  let history = recordAction(emptyHistory, { type: "stroke", stroke })
+  history = recordAction(history, { type: "stroke", stroke: { ...stroke, tool: "eraser" } })
+  const drawing = replayHistory(history)
+  history = recordAction(history, { type: "clear" })
+  expect(replayHistory(history)).toEqual([])
+  expect(replayHistory({ ...history, cursor: 2 })).toEqual(drawing)
+  const branched = recordAction({ ...history, cursor: 1 }, { type: "stroke", stroke })
+  expect(branched.actions).toHaveLength(2)
+  expect(replayHistory(branched)).toEqual([stroke, stroke])
+})
+
+test("undo/redo supports each tool, invalidates redo on new strokes, and cancels unfinished input", () => {
+  render(<DrawingSessionProvider><Harness /></DrawingSessionProvider>)
+  const model = () => JSON.parse(screen.getByTestId("model").textContent!)[drawingPageKey("student-1")] ?? []
+  const undo = () => fireEvent.click(screen.getByRole("button", { name: "Undo" }))
+  const redo = () => fireEvent.click(screen.getByRole("button", { name: "Redo" }))
+  for (const tool of ["pencil", "paintbrush", "eraser"]) {
+    fireEvent.click(screen.getByRole("button", { name: `Use ${tool}` }))
+    const before = model()
+    draw(canvas()); const after = model()
+    undo(); expect(model()).toEqual(before)
+    redo(); expect(model()).toEqual(after)
+  }
+  undo(); undo(); expect(model()).toHaveLength(1)
+  draw(canvas()); expect(screen.getByRole("button", { name: "Redo" })).toBeDisabled()
+  expect(model()).toHaveLength(2)
+  fireEvent.pointerDown(canvas(), { pointerId: 20, button: 0, clientX: 200, clientY: 100 })
+  undo()
+  fireEvent.pointerUp(canvas(), { pointerId: 20, clientX: 300, clientY: 150 })
+  expect(model()).toHaveLength(1)
+  expect(backend.frames.size).toBe(0)
+})
+
+test("clear confirmation is cancellable and undoable, with isolated persistent page history and settings", () => {
+  render(<DrawingSessionProvider><Harness /></DrawingSessionProvider>)
+  const read = (student: string) => JSON.parse(screen.getByTestId("model").textContent!)[drawingPageKey(student)] ?? []
+  const click = (name: string) => fireEvent.click(screen.getByRole("button", { name }))
+  expect(screen.getByRole("button", { name: "Delete All" })).toBeDisabled()
+  draw(canvas()); draw(canvas())
+  const original = read("student-1")
+  click("Delete All"); expect(screen.getByRole("dialog", { name: "Clear this page?" })).toBeInTheDocument()
+  click("Cancel"); expect(read("student-1")).toEqual(original)
+  click("Select student"); draw(canvas()); const other = read("student-2")
+  click("Select student")
+  click("Red"); click("Increase brush size")
+  click("Delete All")
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete All" }))
+  expect(read("student-1")).toEqual([])
+  expect(read("student-2")).toEqual(other)
+  expect(screen.getByRole("button", { name: "Delete All" })).toBeDisabled()
+  expect(screen.getByRole("button", { name: "Red" })).toHaveAttribute("aria-pressed", "true")
+  expect(screen.getByLabelText("Brush size")).toHaveTextContent("3.5px")
+  for (const name of ["Toggle mode", "Toggle mode", "Select student", "Select student"]) click(name)
+  click("Undo"); expect(read("student-1")).toEqual(original)
+  act(() => backend.resize({ left: 100, top: 50, width: 800, height: 400 }, 2))
+  expect(backend.context(canvas()).lineTo).toHaveBeenLastCalledWith(720, 360)
+  click("Redo"); expect(read("student-1")).toEqual([])
+  expect(read("student-2")).toEqual(other)
+})
+
 test("all swatches and rainbow positions affect only subsequent strokes", () => {
   render(<DrawingSessionProvider><Harness /></DrawingSessionProvider>)
   draw(canvas())
@@ -187,6 +326,43 @@ test("changing settings during an active stroke preserves its starting propertie
   draw(canvas())
   expect(commit.mock.calls[0][0]).toMatchObject({ color: "#ed2f18", width: 4.5, opacity: .8 })
   expect(commit.mock.calls[1][0]).toMatchObject({ color: "#2457e9", width: 20, opacity: 1 })
+})
+
+test("eraser uses ordered destination-out compositing, ignores opacity, and resets drawing properties", () => {
+  const ctx = makeDrawingContext() as ReturnType<typeof makeDrawingContext> & { globalCompositeOperation: string }
+  const operations: unknown[] = []
+  ctx.stroke.mockImplementation(() => { operations.push([ctx.globalCompositeOperation, ctx.globalAlpha, ctx.lineWidth]) })
+  const points = [{ x: .2, y: .5 }, { x: .8, y: .5 }]
+  const strokes: DrawingStroke[] = [
+    { tool: "pencil", ...drawingTools.pencil, opacity: .5, points },
+    { tool: "eraser", ...drawingTools.eraser, opacity: .1, points },
+    { tool: "paintbrush", ...drawingTools.paintbrush, opacity: .25, points },
+  ]
+  for (const width of [400, 800]) renderDrawing(ctx as unknown as CanvasRenderingContext2D, strokes, width, 200)
+  expect(operations).toEqual(Array(2).fill([["source-over", .5, 2.5], ["destination-out", 1, 16], ["source-over", .25, 8]]).flat())
+  expect(strokes[0].opacity).toBe(.5)
+})
+
+test("eraser size and opacity survive modes and students; eraser captures full opacity", () => {
+  render(<DrawingSessionProvider><Harness /></DrawingSessionProvider>)
+  const opacity = () => screen.getByRole("slider", { name: "Transparency" })
+  for (const percent of [100, 50, 25]) {
+    fireEvent.change(opacity(), { target: { value: percent } }); draw(canvas())
+  }
+  fireEvent.click(screen.getByRole("button", { name: "Use eraser" }))
+  expect(screen.getByLabelText("Brush size")).toHaveTextContent("16px")
+  fireEvent.click(screen.getByRole("button", { name: "Increase brush size" }))
+  draw(canvas(), "touch")
+  for (const name of ["Toggle mode", "Toggle mode", "Select student", "Select student"]) fireEvent.click(screen.getByText(name))
+  expect(screen.getByRole("button", { name: "Use eraser" })).toHaveAttribute("aria-pressed", "true")
+  expect(screen.getByLabelText("Brush size")).toHaveTextContent("17px")
+  expect(opacity()).toHaveValue("25")
+  fireEvent.click(screen.getByRole("button", { name: "Use pencil" }))
+  expect(screen.getByLabelText("Brush size")).toHaveTextContent("2.5px")
+  draw(canvas())
+  const strokes: DrawingStroke[] = JSON.parse(screen.getByTestId("model").textContent!)[drawingPageKey("student-1")]
+  expect(strokes.map(s => s.opacity)).toEqual([1, .5, .25, 1, .25])
+  expect(strokes[3]).toMatchObject({ tool: "eraser", width: 17 })
 })
 
 test("tool switching and per-student strokes survive mode changes and keyed student remounts", () => {

@@ -1,35 +1,45 @@
 "use client"
 
-import { useLayoutEffect, useRef } from "react"
+import { useLayoutEffect, useRef, type RefObject } from "react"
 import { drawingTools, normalizeDrawingPoint, renderDrawing, type DrawingStroke, type DrawingTool } from "./drawingModel"
+import { shapeGeometry, type ShapeType } from "./drawingShapes"
 
 type Props = {
   studentId: string; owned: boolean; tool: DrawingTool
   color?: string; width?: number; opacity?: number
+  selectedShape?: ShapeType | null
   strokes: readonly DrawingStroke[]; onCommit: (stroke: DrawingStroke) => void
+  cancelStrokeRef?: RefObject<(() => void) | null>
 }
 
-export default function DrawingSurface({ studentId, owned, tool, strokes, onCommit,
+export default function DrawingSurface({ studentId, owned, tool, strokes, onCommit, cancelStrokeRef, selectedShape = null,
   color = drawingTools[tool].color, width: brushWidth = drawingTools[tool].width, opacity = drawingTools[tool].opacity }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const settings = useRef({ strokes, tool, color, width: brushWidth, opacity })
+  const settings = useRef({ strokes, tool, color, width: brushWidth, opacity, selectedShape })
   const repaint = useRef<(() => void) | null>(null)
   useLayoutEffect(() => {
-    settings.current = { strokes, tool, color, width: brushWidth, opacity }
+    settings.current = { strokes, tool, color, width: brushWidth, opacity, selectedShape }
     repaint.current?.()
-  }, [strokes, tool, color, brushWidth, opacity])
+  }, [strokes, tool, color, brushWidth, opacity, selectedShape])
 
   useLayoutEffect(() => {
     const canvas = canvasRef.current
     const ctx = canvas?.getContext("2d")
     if (!canvas || !ctx) return
-    let active: { pointerId: number; stroke: DrawingStroke } | null = null
+    let active: { pointerId: number; stroke: DrawingStroke; shapeType: ShapeType | null } | null = null
     let frame: number | null = null
     let width = 0, height = 0
 
+    function liveStroke(): DrawingStroke | undefined {
+      if (!active) return
+      if (!active.shapeType) return active.stroke
+      const points = active.stroke.points
+      const shape = shapeGeometry(active.shapeType, points[0], points[points.length - 1], width, height)
+      return shape ? { ...active.stroke, shape } : undefined
+    }
     function paint(extra?: DrawingStroke) {
       if (!ctx) return
-      const live = extra ?? active?.stroke
+      const live = extra ?? liveStroke()
       renderDrawing(ctx, live ? [...settings.current.strokes, live] : settings.current.strokes, width, height)
     }
     function schedulePaint() {
@@ -58,17 +68,21 @@ export default function DrawingSurface({ studentId, owned, tool, strokes, onComm
       for (const sample of samples.length ? samples : [event]) {
         const point = normalizeDrawingPoint(sample.clientX, sample.clientY, rect)
         const last = active.stroke.points.at(-1)
-        if (point && (point.x !== last?.x || point.y !== last?.y)) active.stroke.points.push(point)
+        if (point && (point.x !== last?.x || point.y !== last?.y)) {
+          if (active.shapeType) active.stroke.points.splice(1, active.stroke.points.length, point)
+          else active.stroke.points.push(point)
+        }
       }
     }
-    // Preserve valid partial strokes on cancellation, lost capture, navigation, or mode unmount.
+    // Freehand partial strokes are retained; shape previews are discarded on interruption.
     function finish(showPreview = true) {
       if (!active || !canvas) return
       const completed = active
+      const stroke = liveStroke()
       active = null // Release may dispatch lostpointercapture: commit exactly once.
       cancelPaint()
-      if (showPreview) paint(completed.stroke)
-      onCommit(completed.stroke)
+      if (showPreview) paint(stroke)
+      if (stroke) onCommit(stroke)
       if (canvas.hasPointerCapture(completed.pointerId)) canvas.releasePointerCapture(completed.pointerId)
     }
     function down(event: PointerEvent) {
@@ -80,7 +94,7 @@ export default function DrawingSurface({ studentId, owned, tool, strokes, onComm
       const selected = settings.current.tool
       // Snapshot settings once: changing controls cannot alter an in-progress stroke.
       const { color, width, opacity } = settings.current
-      active = { pointerId: event.pointerId, stroke: { tool: selected, color, width, opacity, points: [point] } }
+      active = { pointerId: event.pointerId, shapeType: settings.current.selectedShape, stroke: { tool: selected, color, width, opacity: selected === "eraser" ? 1 : opacity, points: [point] } }
       schedulePaint()
     }
     function move(event: PointerEvent) {
@@ -95,10 +109,22 @@ export default function DrawingSurface({ studentId, owned, tool, strokes, onComm
       finish()
     }
     function cancel(event: PointerEvent) {
-      if (event.pointerId === active?.pointerId) finish()
+      if (event.pointerId === active?.pointerId) {
+        if (active?.shapeType) discard()
+        else finish()
+      }
+    }
+
+    function discard() {
+      const pointerId = active?.pointerId
+      active = null
+      cancelPaint()
+      paint()
+      if (pointerId !== undefined && canvas?.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId)
     }
 
     repaint.current = paint
+    if (cancelStrokeRef) cancelStrokeRef.current = discard
     resize()
     const observer = new ResizeObserver(resize)
     observer.observe(canvas)
@@ -126,11 +152,13 @@ export default function DrawingSurface({ studentId, owned, tool, strokes, onComm
       observer.disconnect()
       window.removeEventListener("resize", resize)
       resolution?.removeEventListener?.("change", ratioChanged)
-      finish(false)
+      if (active?.shapeType) discard()
+      else finish(false)
       cancelPaint()
       repaint.current = null
+      if (cancelStrokeRef) cancelStrokeRef.current = null
     }
-  }, [studentId, owned, onCommit])
+  }, [studentId, owned, onCommit, cancelStrokeRef])
 
   return <div className="drawing-surface" data-readonly={!owned}>
     <canvas ref={canvasRef} role="img" data-student={studentId} data-readonly={!owned}

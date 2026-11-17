@@ -7,9 +7,11 @@ import { PointedBanner } from "../StoryDecorations"
 import { DrawingPanelFrame } from "./DrawingDecorations"
 import { drawingAssets } from "./drawingAssets"
 
+import { shapeTypes, shapePath, type ShapeType } from "./drawingShapes"
+
 type Group = "shapes" | "stamps" | "background"
 
-export default function DrawingAssetPanel() {
+export default function DrawingAssetPanel({ selectedShape = null, onSelectShape, owned = false }: { selectedShape?: ShapeType | null; onSelectShape?: (shape: ShapeType) => void; owned?: boolean }) {
   const [group, setGroup] = useState<Group>("shapes")
   const [page, setPage] = useState(0)
   const assets = drawingAssets[group]
@@ -33,12 +35,16 @@ export default function DrawingAssetPanel() {
     </div>
     <div className="drawing-asset-frame">
       <div className="drawing-asset-grid" role="list" aria-label={`${group === "background" ? "Background" : group === "stamps" ? "Stamp" : "Shape"} previews`}>
-        {Array.from({ length: 8 }, (_, index) => <div className="drawing-asset-slot" role="listitem" key={visible[index]?.src ?? index}
+        {group === "shapes" ? shapeTypes.map((shape) => <div className="drawing-asset-slot" role="listitem" key={shape}>
+          <button type="button" className="drawing-shape-option" disabled={!owned} aria-label={`Draw ${shape.toLowerCase()}`} aria-pressed={selectedShape === shape} title={`Select ${shape}; drag on the canvas to place it`} onClick={() => onSelectShape?.(shape)}>
+            <svg viewBox="-10 -10 120 120" aria-hidden="true"><path d={shapePath(shape)} transform={shape === "Rectangle" ? "translate(0 20) scale(1 .6)" : undefined} /></svg><span>{shape}</span>
+          </button>
+        </div>) : Array.from({ length: 8 }, (_, index) => <div className="drawing-asset-slot" role="listitem" key={visible[index]?.src ?? index}
           title={visible[index] ? "Preview only; placing assets is coming soon" : "Asset slot; coming soon"}>
           {visible[index] && <Image src={visible[index].src} alt={visible[index].name} width={120} height={120} unoptimized />}
         </div>)}
       </div>
     </div>
-    <p className="drawing-sr-only" role="status">{group === "shapes" ? "Shape assets are coming soon." : `${assets.length} available ${group} previews. Placing assets is coming soon.`}</p>
+    <p className="drawing-sr-only" role="status">{group === "shapes" ? "Select a shape, then drag on your drawing page to place it." : `${assets.length} available ${group} previews. Placing assets is coming soon.`}</p>
   </aside>
 }

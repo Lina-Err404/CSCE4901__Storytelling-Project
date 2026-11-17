@@ -1,4 +1,6 @@
-export type DrawingTool = "pencil" | "paintbrush"
+import { renderShape, type ShapeGeometry } from "./drawingShapes"
+
+export type DrawingTool = "pencil" | "paintbrush" | "eraser"
 export type DrawingPoint = { x: number; y: number }
 export type DrawingStroke = {
   tool: DrawingTool
@@ -7,11 +9,13 @@ export type DrawingStroke = {
   /** CSS pixels; positions scale with the canvas, while tool widths stay readable. */
   width: number
   opacity: number
+  shape?: ShapeGeometry
 }
 
 export const drawingTools = {
   pencil: { color: "#30343b", width: 2.5, opacity: 1 },
   paintbrush: { color: "#30343b", width: 8, opacity: 1 },
+  eraser: { color: "#30343b", width: 16, opacity: 1 },
 } satisfies Record<DrawingTool, Omit<DrawingStroke, "tool" | "points">>
 
 // Each existing student has one drawing page. Use identity, never the navigation index.
@@ -35,9 +39,13 @@ export function renderDrawing(ctx: CanvasRenderingContext2D, strokes: readonly D
     ctx.lineWidth = stroke.width
     ctx.strokeStyle = stroke.color
     ctx.fillStyle = stroke.color
-    ctx.globalAlpha = stroke.opacity
+    // Tool identity also identifies the operation, including older drawing strokes.
+    ctx.globalCompositeOperation = stroke.tool === "eraser" ? "destination-out" : "source-over"
+    ctx.globalAlpha = stroke.tool === "eraser" ? 1 : stroke.opacity
     ctx.beginPath()
-    if (points.length === 1) {
+    if (stroke.shape) {
+      renderShape(ctx, stroke.shape, stroke.points, width, height)
+    } else if (points.length === 1) {
       ctx.arc(points[0].x, points[0].y, stroke.width / 2, 0, Math.PI * 2)
       ctx.fill()
     } else {

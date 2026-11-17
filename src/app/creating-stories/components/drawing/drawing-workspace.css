@@ -103,3 +103,16 @@
   .story-drawing-layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "canvas" "assets" "controls"; }
   .drawing-panel { width: min(100%, 320px); justify-self: center; }
 }
+
+/* Drawing history keeps the established cream/gold treatment. */
+.story-screen[data-mode="drawing"] .drawing-history button:disabled { opacity: .45; }
+.drawing-clear-dialog { position: fixed; inset: 0; margin: auto; width: min(420px, calc(100vw - 32px)); padding: 24px; border: 3px solid var(--story-gold); border-radius: 12px; background: #f0eadf; color: var(--story-ink); font-family: Georgia, serif; }
+.drawing-clear-dialog::backdrop { background: #14254f99; }
+.drawing-clear-dialog h2 { margin: 0 0 12px; font-size: 26px; }
+.drawing-clear-dialog p { line-height: 1.5; }
+.drawing-clear-dialog > div { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; }
+.drawing-clear-dialog button { padding: 8px 16px; border: 2px solid var(--story-gold); border-radius: 8px; background: #e6d1a3; }
+
+.drawing-shape-option { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; width: 100%; height: 100%; padding: 5px; font-size: clamp(11px, 1vw, 16px); }
+.drawing-shape-option svg { width: 65%; flex: 1; min-height: 0; fill: none; stroke: currentColor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round; }
+.drawing-shape-option[aria-pressed="true"] { box-shadow: inset 0 0 0 3px #765724; }

@@ -1,6 +1,7 @@
 "use client"
 
-import { useId } from "react"
+import { useId, useRef, useState } from "react"
+import ClearDrawingDialog from "./ClearDrawingDialog"
 import { Undo2, Redo2, PaintBucket, Minus, Plus } from "lucide-react"
 import { PointedBanner } from "../StoryDecorations"
 import { DrawingPanelFrame, DrawingToolArtwork } from "./DrawingDecorations"
@@ -15,23 +16,31 @@ const colors = [
   ["Pale turquoise", "#bdeae6"], ["Periwinkle", "#7b82ec"], ["Lavender", "#be91df"], ["Pink", "#df80b0"],
 ]
 
-export default function DrawingControlsPanel({ tool, onSelectTool, owned, color, onSelectColor, sizes, onChangeSize, rainbowPosition, onRainbowPosition }: {
+export default function DrawingControlsPanel({ tool, onSelectTool, owned, color, onSelectColor, sizes, onChangeSize, rainbowPosition, onRainbowPosition, opacity, onOpacity, canUndo, canRedo, canClear, onHistory, shapeActive }: {
+  shapeActive?: boolean
+  canUndo: boolean; canRedo: boolean; canClear: boolean
+  onHistory: (command: "undo" | "redo" | "clear") => void
   tool: DrawingTool; onSelectTool: (tool: DrawingTool) => void; owned: boolean
+  opacity: number; onOpacity: (opacity: number) => void
   color: string; onSelectColor: (color: string) => void
   sizes: Record<DrawingTool, number>; onChangeSize: (delta: number) => void
   rainbowPosition: number; onRainbowPosition: (position: number) => void
 }) {
   const pendingId = useId()
   const transparencyId = useId()
+  const opacityDescriptionId = useId()
   const size = sizes[tool]
+  const [confirming, setConfirming] = useState(false)
+  const deleteButton = useRef<HTMLButtonElement>(null)
+  function closeDialog() { setConfirming(false); deleteButton.current?.focus() }
   return <aside className="drawing-panel drawing-controls" aria-label="Drawing controls">
     <DrawingPanelFrame right />
-    <p className="drawing-sr-only" id={pendingId}>Pencil, paintbrush, colours and brush sizes are available. Other drawing controls and drawing persistence are coming soon.</p>
+    <p className="drawing-sr-only" id={pendingId}>Pencil, paintbrush, eraser, transparency, colours and brush sizes are available. Other drawing controls and drawing persistence are coming soon.</p>
     <fieldset disabled={!owned} aria-describedby={pendingId}>
       <legend className="drawing-sr-only">Drawing settings</legend>
       <div className="drawing-history">
-        <div><button disabled type="button" aria-label="Undo" title="Undo (coming soon)"><Undo2 aria-hidden="true" /></button><button disabled type="button" aria-label="Redo" title="Redo (coming soon)"><Redo2 aria-hidden="true" /></button></div>
-        <button disabled type="button" className="drawing-delete" title="Delete All (coming soon)">Delete All</button>
+        <div><button disabled={!canUndo} type="button" aria-label="Undo" title="Undo last drawing operation" onClick={() => onHistory("undo")}><Undo2 aria-hidden="true" /></button><button disabled={!canRedo} type="button" aria-label="Redo" title="Redo drawing operation" onClick={() => onHistory("redo")}><Redo2 aria-hidden="true" /></button></div>
+        <button ref={deleteButton} disabled={!canClear} type="button" className="drawing-delete" title="Clear this drawing page" onClick={() => setConfirming(true)}>Delete All</button>
       </div>
       <div className="drawing-palette" role="group" aria-label="Colour palette">
         <div className="drawing-colors">{colors.map(([name, swatch]) => <button type="button" key={name} aria-label={name} title={name}
@@ -41,9 +50,10 @@ export default function DrawingControlsPanel({ tool, onSelectTool, owned, color,
           onPointerDown={() => { if (owned) onSelectColor(rainbowColor(rainbowPosition)) }}
           onChange={(event) => { const position = Number(event.target.value); onRainbowPosition(position); onSelectColor(rainbowColor(position)) }} />
       </div>
+      <p className="drawing-sr-only" id={opacityDescriptionId}>Stroke opacity: 100% is fully opaque; 0% is invisible. Eraser always erases fully.</p>
       <div className="drawing-transparency">
-        <div><label htmlFor={transparencyId}>Transparency</label><span>0%</span></div>
-        <PointedBanner compact><input disabled id={transparencyId} type="range" min={0} max={100} defaultValue={0} title="Transparency (coming soon)" /></PointedBanner>
+        <div><label htmlFor={transparencyId}>Transparency</label><span>{Math.round(opacity * 100)}%</span></div>
+        <PointedBanner compact><input id={transparencyId} type="range" min={0} max={100} value={Math.round(opacity * 100)} onChange={(event) => onOpacity(Number(event.target.value) / 100)} aria-describedby={opacityDescriptionId} style={{ background: `linear-gradient(to right, #d0a347 ${opacity * 100}%, #837046 ${opacity * 100}%)` }} /></PointedBanner>
       </div>
       <div className="drawing-brush-settings">
         <button disabled type="button" aria-label="Paint bucket" title="Paint bucket (coming soon)"><PaintBucket aria-hidden="true" /></button>
@@ -51,12 +61,12 @@ export default function DrawingControlsPanel({ tool, onSelectTool, owned, color,
       </div>
     </fieldset>
     <div className="drawing-tools" role="group" aria-label="Drawing tool">
-      {(["pencil", "paintbrush"] as const).map((option) => <button key={option} type="button" aria-label={`Use ${option}`}
-        aria-pressed={tool === option} disabled={!owned} onClick={() => onSelectTool(option)}
-        title={owned ? `${option === "pencil" ? "Pencil" : "Paintbrush"} (${sizes[option]}px)` : "Only the owner can draw on this page"}>
+      {(["pencil", "paintbrush", "eraser"] as const).map((option) => <button key={option} type="button" aria-label={`Use ${option}`}
+        aria-pressed={!shapeActive && tool === option} disabled={!owned} onClick={() => onSelectTool(option)}
+        title={owned ? `${option === "pencil" ? "Pencil" : option === "eraser" ? "Eraser" : "Paintbrush"} (${sizes[option]}px)` : "Only the owner can draw on this page"}>
         <DrawingToolArtwork tool={option} />
       </button>)}
-      <button type="button" disabled aria-label="Use eraser" title="Eraser (coming soon)"><DrawingToolArtwork tool="eraser" /></button>
     </div>
+    {confirming && owned && <ClearDrawingDialog onCancel={closeDialog} onConfirm={() => { onHistory("clear"); closeDialog() }} />}
   </aside>
 }
