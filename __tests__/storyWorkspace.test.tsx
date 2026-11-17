@@ -1,5 +1,5 @@
 import React, { StrictMode } from "react"
-import { act, fireEvent, render, screen, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import "@testing-library/jest-dom"
 import { onSnapshot, setDoc } from "@firebase/firestore"
 import { ReferenceCreatingStories } from "../src/app/creating-stories/creatingStories"
@@ -7,6 +7,7 @@ import StoryPromptPanel from "../src/app/creating-stories/components/StoryPrompt
 import StoryWorkspace from "../src/app/creating-stories/components/StoryWorkspace"
 import { DEFAULT_STORY_PROMPT } from "../src/app/creating-stories/components/storyPrompt"
 import DrawingAssetPanel from "../src/app/creating-stories/components/drawing/DrawingAssetPanel"
+import { installDrawingCanvas } from "./helpers/drawingCanvas"
 
 jest.mock("@/src/utils/firestore", () => ({ __esModule: true, default: {} }))
 jest.mock("@firebase/firestore", () => ({
@@ -18,8 +19,10 @@ jest.mock("@firebase/firestore", () => ({
 jest.mock("@/components/ui/sidebar", () => ({ SidebarProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }))
 jest.mock("@/components/app-sidebar", () => ({ AppSidebar: () => <aside aria-label="Existing drawing tools" /> }))
 
+let drawingCanvas: ReturnType<typeof installDrawingCanvas>
 beforeEach(() => {
   jest.clearAllMocks()
+  drawingCanvas = installDrawingCanvas()
   window.matchMedia = jest.fn().mockReturnValue({ matches: false })
   ;(setDoc as jest.Mock).mockResolvedValue(undefined)
   ;(onSnapshot as jest.Mock).mockImplementation((_collection, callback) => {
@@ -27,6 +30,7 @@ beforeEach(() => {
     return jest.fn()
   })
 })
+afterEach(() => { cleanup(); drawingCanvas.restore() })
 
 test("reference shell uses the existing prompt only in the left panel and identifies the current mode", () => {
   render(<ReferenceCreatingStories />)
@@ -190,22 +194,27 @@ test("bottom navigation contains only page controls and save status, with no smi
   expect(container.querySelector(".story-feedback, #story-smile-gold")).toBeNull()
 })
 
-test("Drawing Mode renders the reference panels and isolated placeholder, with unavailable drawing controls disabled", () => {
+test("Drawing Mode preserves its panels, enables implemented settings, and keeps pending controls disabled", () => {
   render(<ReferenceCreatingStories />)
   fireEvent.click(screen.getByRole("button", { name: /Writing Mode; switch to Drawing Mode/ }))
   const assets = screen.getByRole("complementary", { name: "Drawing assets" })
   expect(within(assets).getByRole("button", { name: "Shapes" })).toHaveAttribute("aria-pressed", "true")
   expect(within(assets).getAllByRole("listitem")).toHaveLength(8)
-  const canvas = screen.getByRole("img", { name: /Your drawing page; drawing canvas coming soon/ })
+  const canvas = screen.getByRole("img", { name: "Your drawing page" })
   expect(canvas).toHaveAttribute("data-student", "student-1")
   expect(canvas).toHaveAttribute("data-readonly", "false")
   const controls = screen.getByRole("complementary", { name: "Drawing controls" })
-  within(controls).getAllByRole("button").forEach((button) => expect(button).toBeDisabled())
+  within(controls).getAllByRole("button").forEach((button) => {
+    if (["Undo", "Redo", "Paint bucket", "Use eraser"].includes(button.getAttribute("aria-label") ?? "") || button.textContent === "Delete All") expect(button).toBeDisabled()
+    else expect(button).toBeEnabled()
+  })
+  expect(within(controls).getByRole("button", { name: "Use pencil" })).toHaveAttribute("aria-pressed", "true")
   expect(within(controls).getByRole("slider", { name: "Transparency" })).toBeDisabled()
-  expect(within(controls).getByRole("slider")).toHaveValue("50")
-  expect(within(controls).getByRole("group", { name: "Colour palette (coming soon)" }).querySelectorAll('.drawing-colors button')).toHaveLength(20)
+  expect(within(controls).getByRole("slider", { name: "Transparency" })).toHaveValue("0")
+  expect(within(controls).getByRole("slider", { name: "Rainbow colour" })).toBeEnabled()
+  expect(within(controls).getByRole("group", { name: "Colour palette" }).querySelectorAll('.drawing-colors button')).toHaveLength(20)
   expect(within(screen.getByRole("navigation", { name: "Story pages" })).getAllByRole("button")).toHaveLength(3)
-  expect(screen.getByText(/drawings cannot be edited or saved yet/)).toBeInTheDocument()
+  expect(screen.getByText(/drawings are not saved and will be lost on refresh/)).toBeInTheDocument()
 })
 
 test("Drawing Mode retains student/page context, ownership boundaries and immediate navigation", () => {
@@ -236,6 +245,38 @@ test("Drawing Mode Save retains the existing story-text callback and does not cl
   await act(async () => { fireEvent.click(save) })
   expect(setDoc).toHaveBeenCalledTimes(1)
   expect(setDoc).toHaveBeenLastCalledWith({ collection: "items", id: "student-1" }, { name: "Still my writing draft" }, { merge: true })
+})
+
+test("actual page navigation, mode switches and development student changes restore the correct drawing without saving it", () => {
+  render(<StrictMode><ReferenceCreatingStories /></StrictMode>)
+  const toggle = () => fireEvent.click(screen.getByRole("button", { name: /Mode; switch to/ }))
+  const currentCanvas = () => screen.getByRole("img", { name: /drawing page/ }) as HTMLCanvasElement
+  const draw = () => {
+    fireEvent.pointerDown(currentCanvas(), { pointerId: 1, button: 0, clientX: 200, clientY: 100 })
+    fireEvent.pointerUp(currentCanvas(), { pointerId: 1, clientX: 400, clientY: 200 })
+  }
+  toggle(); draw()
+  toggle(); toggle()
+  expect(drawingCanvas.context(currentCanvas()).moveTo).toHaveBeenLastCalledWith(100, 50)
+  fireEvent.click(screen.getByRole("button", { name: "Next Page" }))
+  expect(drawingCanvas.context(currentCanvas()).clearRect).toHaveBeenLastCalledWith(0, 0, 400, 200)
+  const strokeCount = drawingCanvas.context(currentCanvas()).stroke.mock.calls.length
+  draw()
+  expect(drawingCanvas.context(currentCanvas()).stroke).toHaveBeenCalledTimes(strokeCount)
+  expect(screen.getByRole("button", { name: "Use pencil" })).toBeDisabled()
+  fireEvent.click(screen.getByRole("button", { name: "Previous Page" }))
+  expect(drawingCanvas.context(currentCanvas()).moveTo).toHaveBeenLastCalledWith(100, 50)
+  fireEvent.change(screen.getByRole("combobox"), { target: { value: "student-2" } })
+  expect(drawingCanvas.context(currentCanvas()).stroke).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole("button", { name: "Use paintbrush" }))
+  draw()
+  expect(drawingCanvas.context(currentCanvas()).lineWidth).toBe(8)
+  fireEvent.change(screen.getByRole("combobox"), { target: { value: "student-1" } })
+  expect(drawingCanvas.context(currentCanvas()).lineWidth).toBe(2.5)
+  fireEvent.click(screen.getByRole("button", { name: "Next Page" }))
+  expect(drawingCanvas.context(currentCanvas()).lineWidth).toBe(8)
+  expect(currentCanvas()).toHaveAttribute("data-readonly", "true")
+  expect(setDoc).not.toHaveBeenCalled()
 })
 
 

@@ -4,6 +4,8 @@ import { useId } from "react"
 import { Undo2, Redo2, PaintBucket, Minus, Plus } from "lucide-react"
 import { PointedBanner } from "../StoryDecorations"
 import { DrawingPanelFrame, DrawingToolArtwork } from "./DrawingDecorations"
+import { type DrawingTool } from "./drawingModel"
+import { rainbowColor } from "./drawingColors"
 
 const colors = [
   ["White", "#ffffff"], ["Black", "#000000"], ["Gray", "#888887"], ["Brown", "#583d27"],
@@ -13,31 +15,48 @@ const colors = [
   ["Pale turquoise", "#bdeae6"], ["Periwinkle", "#7b82ec"], ["Lavender", "#be91df"], ["Pink", "#df80b0"],
 ]
 
-export default function DrawingControlsPanel() {
+export default function DrawingControlsPanel({ tool, onSelectTool, owned, color, onSelectColor, sizes, onChangeSize, rainbowPosition, onRainbowPosition }: {
+  tool: DrawingTool; onSelectTool: (tool: DrawingTool) => void; owned: boolean
+  color: string; onSelectColor: (color: string) => void
+  sizes: Record<DrawingTool, number>; onChangeSize: (delta: number) => void
+  rainbowPosition: number; onRainbowPosition: (position: number) => void
+}) {
   const pendingId = useId()
   const transparencyId = useId()
+  const size = sizes[tool]
   return <aside className="drawing-panel drawing-controls" aria-label="Drawing controls">
     <DrawingPanelFrame right />
-    <p className="drawing-sr-only" id={pendingId}>Drawing tools and drawing persistence are coming soon. These controls are unavailable.</p>
-    <fieldset disabled aria-describedby={pendingId}>
-      <legend className="drawing-sr-only">Drawing tools (coming soon)</legend>
+    <p className="drawing-sr-only" id={pendingId}>Pencil, paintbrush, colours and brush sizes are available. Other drawing controls and drawing persistence are coming soon.</p>
+    <fieldset disabled={!owned} aria-describedby={pendingId}>
+      <legend className="drawing-sr-only">Drawing settings</legend>
       <div className="drawing-history">
-        <div><button type="button" aria-label="Undo" title="Undo (coming soon)"><Undo2 aria-hidden="true" /></button><button type="button" aria-label="Redo" title="Redo (coming soon)"><Redo2 aria-hidden="true" /></button></div>
-        <button type="button" className="drawing-delete" title="Delete All (coming soon)">Delete All</button>
+        <div><button disabled type="button" aria-label="Undo" title="Undo (coming soon)"><Undo2 aria-hidden="true" /></button><button disabled type="button" aria-label="Redo" title="Redo (coming soon)"><Redo2 aria-hidden="true" /></button></div>
+        <button disabled type="button" className="drawing-delete" title="Delete All (coming soon)">Delete All</button>
       </div>
-      <div className="drawing-palette" role="group" aria-label="Colour palette (coming soon)">
-        <div className="drawing-colors">{colors.map(([name, color]) => <button type="button" key={name} aria-label={name} title={`${name} (coming soon)`} style={{ backgroundColor: color }} />)}</div>
-        <button type="button" className="drawing-rainbow" aria-label="Custom colour" title="Custom colour (coming soon)" />
+      <div className="drawing-palette" role="group" aria-label="Colour palette">
+        <div className="drawing-colors">{colors.map(([name, swatch]) => <button type="button" key={name} aria-label={name} title={name}
+          aria-pressed={color === swatch} onClick={() => onSelectColor(swatch)} style={{ backgroundColor: swatch }} />)}</div>
+        <input type="range" className="drawing-rainbow" aria-label="Rainbow colour" min={0} max={100} step={1}
+          value={rainbowPosition} aria-valuetext={rainbowColor(rainbowPosition)} title={`Rainbow colour: ${rainbowColor(rainbowPosition)}`}
+          onPointerDown={() => { if (owned) onSelectColor(rainbowColor(rainbowPosition)) }}
+          onChange={(event) => { const position = Number(event.target.value); onRainbowPosition(position); onSelectColor(rainbowColor(position)) }} />
       </div>
       <div className="drawing-transparency">
-        <div><label htmlFor={transparencyId}>Transparency</label><span>50%</span></div>
-        <PointedBanner compact><input id={transparencyId} type="range" min={0} max={100} defaultValue={50} title="Transparency (coming soon)" /></PointedBanner>
+        <div><label htmlFor={transparencyId}>Transparency</label><span>0%</span></div>
+        <PointedBanner compact><input disabled id={transparencyId} type="range" min={0} max={100} defaultValue={0} title="Transparency (coming soon)" /></PointedBanner>
       </div>
       <div className="drawing-brush-settings">
-        <button type="button" aria-label="Paint bucket" title="Paint bucket (coming soon)"><PaintBucket aria-hidden="true" /></button>
-        <div className="drawing-brush-size"><button type="button" aria-label="Decrease brush size" title="Brush size (coming soon)"><Minus aria-hidden="true" /></button><output aria-label="Brush size"><span aria-hidden="true" /><span className="drawing-sr-only">8 pixels</span></output><button type="button" aria-label="Increase brush size" title="Brush size (coming soon)"><Plus aria-hidden="true" /></button></div>
+        <button disabled type="button" aria-label="Paint bucket" title="Paint bucket (coming soon)"><PaintBucket aria-hidden="true" /></button>
+        <div className="drawing-brush-size"><button disabled={size <= 1} type="button" aria-label="Decrease brush size" onClick={() => onChangeSize(-1)}><Minus aria-hidden="true" /></button><output aria-label="Brush size" aria-live="polite">{size}<span className="drawing-size-unit">px</span></output><button disabled={size >= 40} type="button" aria-label="Increase brush size" onClick={() => onChangeSize(1)}><Plus aria-hidden="true" /></button></div>
       </div>
-      <div className="drawing-tools">{(["pencil", "paintbrush", "eraser"] as const).map((tool) => <button key={tool} type="button" aria-label={`Use ${tool}`} title={`${tool[0].toUpperCase()}${tool.slice(1)} (coming soon)`}><DrawingToolArtwork tool={tool} /></button>)}</div>
     </fieldset>
+    <div className="drawing-tools" role="group" aria-label="Drawing tool">
+      {(["pencil", "paintbrush"] as const).map((option) => <button key={option} type="button" aria-label={`Use ${option}`}
+        aria-pressed={tool === option} disabled={!owned} onClick={() => onSelectTool(option)}
+        title={owned ? `${option === "pencil" ? "Pencil" : "Paintbrush"} (${sizes[option]}px)` : "Only the owner can draw on this page"}>
+        <DrawingToolArtwork tool={option} />
+      </button>)}
+      <button type="button" disabled aria-label="Use eraser" title="Eraser (coming soon)"><DrawingToolArtwork tool="eraser" /></button>
+    </div>
   </aside>
 }
