@@ -2,13 +2,16 @@
 
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react"
 import { drawingPageKey, drawingTools, type DrawingStroke, type DrawingTool } from "./drawingModel"
-import { emptyHistory, recordAction, replayHistory, type DrawingHistory, type DrawingAction } from "./drawingHistory"
+import { emptyHistory, recordAction, replayHistory, replayBackground, type DrawingHistory, type DrawingAction } from "./drawingHistory"
 
 import type { ShapeType } from "./drawingShapes"
 
 import type { StampAsset } from "./drawingStamps"
 
 type DrawingSession = {
+  restoreHistory: (studentId: string, history: DrawingHistory) => void
+  backgrounds: Record<string, StampAsset | null>
+  selectBackground: (studentId: string, asset: StampAsset | null) => void
   selectedStamp: StampAsset | null
   selectStamp: (stamp: StampAsset) => void
   selectedShape: ShapeType | null
@@ -34,7 +37,17 @@ export const emptyDrawing: readonly DrawingStroke[] = []
 /** Lives above mode rendering AND the keyed student component. No persistence side effects. */
 export function DrawingSessionProvider({ children }: { children: ReactNode }) {
   const [histories, setHistories] = useState<DrawingSession["histories"]>({})
+  const restoreHistory = useCallback((studentId: string, history: DrawingHistory) => { setHistories(current => ({ ...current, [drawingPageKey(studentId)]: history })) }, [])
   const drawings = useMemo(() => Object.fromEntries(Object.entries(histories).map(([key, history]) => [key, replayHistory(history)])), [histories])
+  const backgrounds = useMemo(() => Object.fromEntries(Object.entries(histories).map(([key, history]) => [key, replayBackground(history)])), [histories])
+  const selectBackground = useCallback((studentId: string, asset: StampAsset | null) => {
+    const key = drawingPageKey(studentId)
+    setHistories(current => {
+      const history = current[key] ?? emptyHistory
+      if (replayBackground(history)?.src === asset?.src) return current
+      return { ...current, [key]: recordAction(history, { type: "background", asset }) }
+    })
+  }, [])
   const changeHistory = useCallback((studentId: string, command: "undo" | "redo" | "clear") => {
     const key = drawingPageKey(studentId)
     setHistories((current) => {
@@ -65,7 +78,7 @@ export function DrawingSessionProvider({ children }: { children: ReactNode }) {
     const action: DrawingAction = { type: "stroke", stroke }
     setHistories((current) => ({ ...current, [key]: recordAction(current[key] ?? emptyHistory, action) }))
   }, [])
-  const value = useMemo(() => ({ selectedStamp, selectStamp, selectedShape, selectShape, drawings, histories, changeHistory, tool, setTool, color, setColor, opacity, setOpacity, sizes, changeSize, rainbowPosition, setRainbowPosition, appendStroke }), [selectedStamp, selectStamp, selectedShape, selectShape, setTool, drawings, histories, changeHistory, tool, color, opacity, sizes, changeSize, rainbowPosition, appendStroke])
+  const value = useMemo(() => ({ restoreHistory, backgrounds, selectBackground, selectedStamp, selectStamp, selectedShape, selectShape, drawings, histories, changeHistory, tool, setTool, color, setColor, opacity, setOpacity, sizes, changeSize, rainbowPosition, setRainbowPosition, appendStroke }), [restoreHistory, backgrounds, selectBackground, selectedStamp, selectStamp, selectedShape, selectShape, setTool, drawings, histories, changeHistory, tool, color, opacity, sizes, changeSize, rainbowPosition, appendStroke])
   return <DrawingContext.Provider value={value}>{children}</DrawingContext.Provider>
 }
 

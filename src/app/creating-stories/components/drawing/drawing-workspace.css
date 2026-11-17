@@ -124,3 +124,12 @@
 @media (max-width: 760px) {
   .drawing-placement-status { top: 8px; bottom: auto; z-index: 1; padding: 4px 8px; border: 1px solid var(--story-gold); border-radius: 6px; background: #f0eadfee; color: var(--story-ink); line-height: 1.3; }
 }
+
+.drawing-background-layer { position: absolute; inset: 0; border-radius: inherit; background-color: white; background-size: cover; background-position: center; pointer-events: none; }
+.drawing-surface canvas { position: relative; z-index: 1; }
+.drawing-background-option { display: block; width: 100%; height: 100%; padding: 5px; font-size: 14px; }
+.drawing-background-option[aria-pressed="true"] { box-shadow: inset 0 0 0 3px #765724; }
+.drawing-background-option > span { display: grid; place-items: center; width: 100%; height: 100%; background: white; }
+.drawing-background-status { position: absolute; z-index: 2; bottom: 8px; right: 8px; padding: 4px 8px; border-radius: 6px; color: var(--story-ink); background: #f0eadfee; font-size: 12px; }
+.drawing-background-status button { text-decoration: underline; }
+.drawing-placement-status { z-index: 2; }

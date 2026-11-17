@@ -7,7 +7,8 @@ import { DrawingSessionProvider, useDrawingSession } from "../src/app/creating-s
 import { drawingPageKey, drawingTools, normalizeDrawingPoint, renderDrawing, type DrawingStroke } from "../src/app/creating-stories/components/drawing/drawingModel"
 import { installDrawingCanvas, makeDrawingContext } from "./helpers/drawingCanvas"
 import { rainbowColor } from "../src/app/creating-stories/components/drawing/drawingColors"
-import { emptyHistory, recordAction, replayHistory } from "../src/app/creating-stories/components/drawing/drawingHistory"
+import { emptyHistory, recordAction, replayHistory, replayBackground } from "../src/app/creating-stories/components/drawing/drawingHistory"
+import DrawingBackground from "../src/app/creating-stories/components/drawing/DrawingBackground"
 import { shapeGeometry, shapeTypes, shapePath } from "../src/app/creating-stories/components/drawing/drawingShapes"
 import { drawingAssets } from "../src/app/creating-stories/components/drawing/drawingAssets"
 import { loadStamp, stampGeometry } from "../src/app/creating-stories/components/drawing/drawingStamps"
@@ -119,15 +120,84 @@ test("resize and DPR changes restore stored strokes using new dimensions", () =>
 function Harness() {
   const [studentId, selectStudent] = useState("student-1")
   const [visible, show] = useState(true)
-  const { drawings } = useDrawingSession()
+  const { drawings, backgrounds, histories } = useDrawingSession()
   return <>
     <button onClick={() => show(!visible)}>Toggle mode</button>
     <button onClick={() => selectStudent(studentId === "student-1" ? "student-2" : "student-1")}>Select student</button>
     {/* Reproduce SetItem's keyed remount under the persistent provider. */}
     {visible && <DrawingWorkspace key={studentId} studentId={studentId} owned />}
     <output data-testid="model">{JSON.stringify(drawings)}</output>
+    <output data-testid="backgrounds">{JSON.stringify(backgrounds)}</output>
+    <output data-testid="histories">{JSON.stringify(histories)}</output>
   </>
 }
+
+test("all seven background sources are valid PNGs and background actions preserve foreground identity", () => {
+  expect(drawingAssets.background).toHaveLength(7)
+  for (const asset of drawingAssets.background) {
+    const png = readFileSync(`public${asset.src}`)
+    expect(png.subarray(1, 4).toString()).toBe("PNG")
+    expect(png.readUInt32BE(16)).toBeGreaterThan(0)
+    expect(png.readUInt32BE(20)).toBeGreaterThan(0)
+  }
+  const stroke: DrawingStroke = { tool: "eraser", ...drawingTools.eraser, points: [{ x: .5, y: .5 }] }
+  const initial = recordAction(emptyHistory, { type: "stroke", stroke })
+  const selected = recordAction(initial, { type: "background", asset: drawingAssets.background[0] })
+  expect(replayHistory(selected)[0]).toBe(stroke)
+  expect(replayBackground(selected)).toBe(drawingAssets.background[0])
+  const cleared = recordAction(selected, { type: "clear" })
+  expect(replayHistory(cleared)).toEqual([])
+  expect(replayBackground(cleared)).toBe(drawingAssets.background[0])
+  expect(replayBackground({ ...selected, cursor: 1 })).toBeNull()
+})
+
+test("background selection, White, undo/redo, no-op selection, branching and page isolation retain drawings/settings", async () => {
+  jest.spyOn(window, "Image").mockImplementation(() => ({ naturalWidth: 1781, naturalHeight: 714, onload: null, onerror: null, set src(_value: string) { queueMicrotask(() => (this as unknown as { onload?: () => void }).onload?.()) } }) as unknown as HTMLImageElement)
+  const { container } = render(<DrawingSessionProvider><Harness /></DrawingSessionProvider>)
+  draw(canvas()); const original = screen.getByTestId("model").textContent
+  const click = async (name: string) => { await act(async () => { fireEvent.click(screen.getByRole("button", { name })) }) }
+  await click("Browse backgrounds")
+  expect(screen.getByRole("button", { name: "Use background White / None" })).toHaveAttribute("aria-pressed", "true")
+  const first = drawingAssets.background[0], second = drawingAssets.background[1]
+  await click(`Use background ${first.name}`)
+  const history = screen.getByTestId("histories").textContent
+  await click(`Use background ${first.name}`)
+  expect(screen.getByTestId("histories").textContent).toBe(history)
+  expect(screen.getByTestId("model").textContent).toBe(original)
+  const layer = () => container.querySelector<HTMLElement>(".drawing-background-layer")!
+  expect(layer().style.backgroundImage).toContain(first.src)
+  expect(layer().parentElement?.querySelector("canvas")).toBe(canvas())
+  await click(`Use background ${second.name}`); expect(layer().style.backgroundImage).toContain(second.src)
+  await click("Undo"); expect(layer().style.backgroundImage).toContain(first.src)
+  await click("Redo"); expect(layer().style.backgroundImage).toContain(second.src)
+  await click("Use background White / None"); expect(layer().style.backgroundImage).toBe("")
+  await click("Undo"); expect(layer().style.backgroundImage).toContain(second.src)
+  await click(`Use background ${first.name}`); expect(screen.getByRole("button", { name: "Redo" })).toBeDisabled()
+  await click("Delete All"); await act(async () => { fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete All" })) })
+  expect(layer().style.backgroundImage).toContain(first.src)
+  await click("Undo"); expect(screen.getByTestId("model").textContent).toBe(original)
+  for (const name of ["Toggle mode", "Toggle mode", "Select student"]) await click(name)
+  expect(layer().style.backgroundImage).toBe("")
+  await click("Browse backgrounds"); await click(`Use background ${second.name}`)
+  await click("Select student"); expect(layer().style.backgroundImage).toContain(first.src)
+  act(() => backend.resize({ left: 0, top: 0, width: 800, height: 400 }, 2))
+  expect(layer().style.backgroundImage).toContain(first.src)
+  expect(screen.getByLabelText("Brush size")).toHaveTextContent("2.5px")
+})
+
+test("failed backgrounds show a retry, never a broken image, and stale loads cannot replace newer choices", async () => {
+  const pending: (() => void)[] = []
+  jest.spyOn(window, "Image").mockImplementation(() => ({ naturalWidth: 800, naturalHeight: 600, onload: null, onerror: null, set src(_value: string) { pending.push(() => (this as unknown as { onload?: () => void }).onload?.()); if (_value.includes("failed")) queueMicrotask(() => (this as unknown as { onerror?: () => void }).onerror?.()) } }) as unknown as HTMLImageElement)
+  const { rerender, container } = render(<DrawingBackground asset={{ src: "/slow-background.png", name: "Slow" }} />)
+  rerender(<DrawingBackground asset={{ src: "/new-background.png", name: "New" }} />)
+  await act(async () => { pending[1]() })
+  await act(async () => { pending[0]() })
+  expect(container.querySelector<HTMLElement>(".drawing-background-layer")!.style.backgroundImage).toContain("/new-background.png")
+  await act(async () => { rerender(<DrawingBackground asset={{ src: "/failed-background.png", name: "Failed" }} />) })
+  expect(screen.getByRole("button", { name: "Retry background" })).toBeInTheDocument()
+  expect(container.querySelector("img")).toBeNull()
+  expect(container.querySelector<HTMLElement>(".drawing-background-layer")!.style.backgroundImage).toBe("")
+})
 
 test("all thirteen catalogue stamps are existing transparent PNGs with valid dimensions", () => {
   expect(drawingAssets.stamps).toHaveLength(13)

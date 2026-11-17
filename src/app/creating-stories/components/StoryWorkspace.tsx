@@ -10,6 +10,7 @@ type BookProps = {
   onChangeText: (text: string) => void; onSave: () => void; saved: boolean; error: boolean
 }
 type Props = BookProps & {
+  saveStatus?: string; saving?: boolean; permanent?: boolean
   DrawingBook: ComponentType<BookProps>
   studentId: string; students: string[]; onSelectStudent?: (id: string) => void
 }
@@ -47,13 +48,13 @@ export default function StoryWorkspace(props: Props) {
           }
         }} />
     </div>
-    {mode === "drawing" && <DrawingWorkspace studentId={page?.id ?? studentId} owned={index === myIndex && Boolean(page?.mine)} />}
+    {mode === "drawing" && <DrawingWorkspace studentId={page?.id ?? studentId} permanent={props.permanent} owned={index === myIndex && Boolean(page?.mine)} />}
     <PointedBanner wide className="story-navigation">
       <nav className="story-navigation-content" aria-label="Story pages">
         <button type="button" className="story-previous" disabled={index <= 0} onClick={() => turn("prev")}>Previous Page</button>
         <button type="button" className="story-next" disabled={index >= pages.length - 1} onClick={() => turn("next")}>Next Page</button>
-        <button type="button" className="story-save" disabled={saved} onClick={onSave} title={mode === "drawing" ? "Save story text; drawing saving is coming soon" : undefined}>Save</button>
-        <span className="story-save-status" role="status" data-error={error}>{error ? "Couldn’t save. Try again." : saved ? "Saved" : "Not Saved"}</span>
+        <button type="button" className="story-save" disabled={saved || props.saving} onClick={onSave} title={!props.permanent && mode === "drawing" ? "Save story text; drawing saving is coming soon" : undefined}>Save</button>
+        <span className="story-save-status" role="status" data-error={error}>{props.saveStatus ?? (error ? "Could not save. Try again." : saved ? "Saved" : "Not Saved")}</span>
       </nav>
     </PointedBanner>
   </section>

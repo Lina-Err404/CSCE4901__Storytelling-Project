@@ -5,7 +5,10 @@ import { drawingTools, normalizeDrawingPoint, renderDrawing, type DrawingStroke,
 import { shapeGeometry, type ShapeType } from "./drawingShapes"
 import { loadedStamp, loadStamp, stampGeometry, type StampAsset } from "./drawingStamps"
 
+import DrawingBackground from "./DrawingBackground"
+
 type Props = {
+  background?: StampAsset | null
   studentId: string; owned: boolean; tool: DrawingTool
   color?: string; width?: number; opacity?: number
   selectedShape?: ShapeType | null
@@ -14,7 +17,7 @@ type Props = {
   cancelStrokeRef?: RefObject<(() => void) | null>
 }
 
-export default function DrawingSurface({ studentId, owned, tool, strokes, onCommit, cancelStrokeRef, selectedShape = null, selectedStamp = null,
+export default function DrawingSurface({ studentId, owned, tool, strokes, onCommit, cancelStrokeRef, selectedShape = null, selectedStamp = null, background = null,
   color = drawingTools[tool].color, width: brushWidth = drawingTools[tool].width, opacity = drawingTools[tool].opacity }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const settings = useRef({ strokes, tool, color, width: brushWidth, opacity, selectedShape, selectedStamp })
@@ -197,6 +200,7 @@ export default function DrawingSurface({ studentId, owned, tool, strokes, onComm
   }, [studentId, owned, onCommit, cancelStrokeRef])
 
   return <div className="drawing-surface" data-readonly={!owned}>
+    <DrawingBackground asset={background} />
     {selectedStamp && owned && <span className="drawing-placement-status" role="status">{imageStatus || `Stamp: ${selectedStamp.name}. Move onto the canvas; click or drag to place.`}</span>}
     <canvas ref={canvasRef} role="img" data-student={studentId} data-readonly={!owned}
       aria-label={`${owned ? "Your" : `${studentId}’s`} drawing page`}
