@@ -1,31 +1,52 @@
-import { Lexend } from "next/font/google";
 import styles from "./joinLobby.module.css";
 
-const lexend = Lexend({ subsets: ["latin"], weight: ["600", "800"] });
+const SLOT_COUNT = 5;
 
-// Placeholder data. Replace this with real students later.
-const SEATS = [{ you: true }, {}, {}, {}, {}];
+type Player = { id: string; name: string; icon: string }; // can pass real players in later
 
-export default function JoinLobby({ code }: { code: string }) {
+export default function JoinLobby({ players = [] }: { players?: Player[] }) {
   return (
-    <main className={`${styles.page} ${lexend.className}`}>
-      <svg className={styles.star} viewBox="0 0 120 120" aria-hidden>
-        <circle cx="60" cy="60" r="52" className={styles.ring} />
-        <path
-          className={styles.starShape}
-          d="M60 22C62 46 74 58 98 60C74 62 62 74 60 98C58 74 46 62 22 60C46 58 58 46 60 22Z"
-        />
-        <path className={styles.starShape} d="M92 10C93 17 96 20 103 21C96 22 93 25 92 32C91 25 88 22 81 21C88 20 91 17 92 10Z" />
-      </svg>
+    <main className={styles.page}>
+      {/* Background Content */}
+      {/* Stars */}
+      <img src="/assets/BG_stars.svg" alt="" aria-hidden className={styles.stars} />
 
-      <h1 className={styles.heading}>You’re in!</h1>
-      <p className={styles.sub}>Waiting for teacher to make groups...</p>
+      {/* Waves Borders Component*/}
+      <img src="/assets/left_wave_cropped.svg" alt="" aria-hidden className={`${styles.wave} ${styles.waveTL}`} />
+      <img src="/assets/right_wave_cropped.svg" alt="" aria-hidden className={`${styles.wave} ${styles.waveBR}`} />
 
-      <ul className={styles.seats} aria-label="Classmates who have joined">
-        {SEATS.map((seat, i) => (
-          <li key={i} className={`${styles.seat} ${seat.you ? styles.you : ""}`} />
-        ))}
-      </ul>
+      {/* Foreground Content */}
+      <div className={styles.content}>
+        <div className={styles.sparkle} aria-hidden>
+
+          {/* Sparkle Components*/}
+          <img src="/assets/sparkle_ring.svg"  alt="" className={`${styles.layer} ${styles.ring}`} />
+          <img src="/assets/sparkle_outer.svg" alt="" className={`${styles.layer} ${styles.outer}`} />
+          <img src="/assets/sparkle_inner.svg" alt="" className={`${styles.layer} ${styles.inner}`} />
+          <img src="/assets/sparkle_small.svg" alt="" className={styles.small} />
+        </div>
+
+        <h1 className={styles.title}>You're in!</h1>
+        <p className={styles.subtitle}>Waiting for teacher to make groups...</p>
+
+        {/* Player Slots*/}
+        <ul className={styles.slots} aria-label="Players in lobby">
+          {Array.from({ length: SLOT_COUNT }, (_, i) => (
+            <li key={i} 
+              style={{ "--i": i } as React.CSSProperties}
+              className={[
+              styles.slot,
+              i === 0 && styles.slotYou,
+              i === 1 && styles.slotNext,
+            ].filter(Boolean).join(" ")}
+            >
+              {players[i] && (
+              <img src={players[i].icon} alt={players[i].name} className={styles.slotIcon} />
+            )}
+            </li>
+          ))}
+        </ul>
+      </div>
     </main>
   );
 }

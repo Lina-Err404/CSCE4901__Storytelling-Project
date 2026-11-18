@@ -7,6 +7,7 @@ import Image from "next/image";
 import { Lexend } from "next/font/google";
 import { auth } from "./firebase-client";
 import styles from "./join/join.module.css";
+import { useRouter } from "next/navigation";
 
 const lexend = Lexend({ subsets: ["latin"], weight: ["600", "800"] });
 const CODE_LENGTH = 6;
@@ -14,6 +15,7 @@ const CODE_LENGTH = 6;
 type JoinResponse = { token: string; lobbyId: string; displayName: string };
 
 export function StudentLobby({ user }: { user: User }) {
+  const router = useRouter();
   const [chars, setChars] = useState<string[]>(Array(CODE_LENGTH).fill(""));
   const inputs = useRef<(HTMLInputElement | null)[]>([]);
   const code = chars.join("");
@@ -93,6 +95,9 @@ export function StudentLobby({ user }: { user: User }) {
       if (!response.ok) throw new Error(payload.error || "Could not join this lobby.");
 
       const result = payload as JoinResponse;
+      router.push(`/join-lobby/${code.trim().toUpperCase()}`);
+      return;
+      
       setJoined(result);
       const socket = io(process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000", {
         auth: { token: result.token },

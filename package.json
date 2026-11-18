@@ -13,6 +13,7 @@
   "dependencies": {
     "@firebase/firestore": "^4.19.0",
     "@supabase/supabase-js": "^2.80.0",
+    "@tanstack/react-hotkeys": "^0.27.0",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.0",
     "dotenv": "^18.0.8",
@@ -20,11 +21,11 @@
     "firebase-admin": "^14.5.0",
     "konva": "^10.9.1",
     "lucide-react": "^1.59.0",
-    "next": "^16.4.2",
+    "next": "16.4.6",
     "polygon-clipping": "^0.15.7",
-    "react": "^19.3.1",
+    "react": "19.3.1",
     "react-aria-components": "^1.22.1",
-    "react-dom": "^19.3.1",
+    "react-dom": "19.3.1",
     "react-konva": "^19.3.2",
     "shadcn": "^4.22.0",
     "socket.io-client": "^4.8.4",
@@ -40,16 +41,20 @@
     "@testing-library/react": "^16.3.3",
     "@types/jest": "^30.0.0",
     "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
     "babel-jest": "^30.5.2",
-    "eslint": "^9",
-    "eslint-config-next": "16.3.8",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.4.6",
     "jest": "^30.5.2",
     "jest-environment-jsdom": "^30.5.2",
     "jest-util": "^29.7.0",
     "tailwindcss": "^4",
     "ts-jest": "^29.4.5",
     "typescript": "^5"
+  },
+  "overrides": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0"
   }
 }
