@@ -74,21 +74,31 @@ export default function TeacherReviewPage({
     );
   }
 
-  const approvedCount = segments.filter((s) => s.status === "approved").length;
+  const approvedCount = segments.filter(
+    (segment) => segment.status === "approved"
+  ).length;
 
   return (
-    <main className="min-h-screen bg-[#1e4d85] px-4 py-8 text-slate-900 sm:px-8">
-      <div className="mx-auto max-w-6xl">
-        <header className="mb-6 text-white">
-          <p className="text-sm">Collab Storytelling</p>
-          <h1 className="mt-2 text-3xl font-bold">Teacher Review</h1>
-          <p className="mt-2">
-            Read each student&apos;s part, leave feedback, and approve it.
-          </p>
-          <p className="mt-2 text-sm">
+    <main className="min-h-screen bg-[#1e4d85] text-slate-900">
+      <header className="flex items-center justify-between gap-4 bg-[#19477f] px-6 py-5 text-white sm:px-10">
+        <button
+          type="button"
+          aria-label="Go back"
+          onClick={() => window.history.back()}
+          className="rounded-lg bg-[#cad9eb] px-3 py-1 text-2xl leading-none text-[#19477f] hover:bg-white"
+        >
+          ←
+        </button>
+        <h1 className="text-lg font-semibold">Teacher Review</h1>
+      </header>
+
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-8">
+        <div className="mb-5 flex flex-wrap justify-between gap-2 text-sm text-white">
+          <p>Read each student&apos;s part, leave feedback, and approve it.</p>
+          <p role="status" className="font-semibold">
             {approvedCount} of {segments.length} parts approved
           </p>
-        </header>
+        </div>
 
         <div className="space-y-6">
           {segments.map((segment) => (
@@ -98,8 +108,10 @@ export default function TeacherReviewPage({
               onApproved={() =>
                 setSegments((current) =>
                   current
-                    ? current.map((s) =>
-                        s.id === segment.id ? { ...s, status: "approved" } : s
+                    ? current.map((part) =>
+                        part.id === segment.id
+                          ? { ...part, status: "approved" }
+                          : part
                       )
                     : current
                 )
@@ -111,7 +123,6 @@ export default function TeacherReviewPage({
     </main>
   );
 }
-
 // Turn a database section name like "rising_action" into "Rising Action".
 function formatSection(section: string) {
   return section
@@ -170,25 +181,26 @@ function SegmentCard({
   }
 
   return (
-    <section className="grid gap-6 rounded-2xl bg-[#cad9eb] p-6 shadow-lg lg:grid-cols-[1fr_360px] sm:p-8">
-      <article>
+    <section className="grid gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <article className="min-w-0 rounded-2xl bg-[#cad9eb] p-5 shadow-lg sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm font-semibold">
             {formatSection(segment.section) || `Part ${segment.order}`}
           </p>
-          <span className="rounded-full bg-white px-3 py-1 text-sm font-semibold">
+          <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold">
             {approved ? "Approved" : "Awaiting review"}
           </span>
         </div>
         {segment.title && (
           <h2 className="mt-4 text-xl font-bold">{segment.title}</h2>
         )}
-        <div className="mt-4 whitespace-pre-wrap rounded-xl bg-white p-6 leading-8">
+        <div className="mt-4 whitespace-pre-wrap break-words rounded-xl bg-white p-5 leading-relaxed">
           {segment.content}
         </div>
       </article>
 
-      <aside className="self-start rounded-2xl bg-white p-6">
+      <aside className="min-w-0 self-start rounded-2xl bg-white p-5 shadow-lg">
+        <h3 className="mb-3 font-bold">Teacher Feedback</h3>
         <label htmlFor={fieldId} className="mb-2 block text-sm font-medium">
           Feedback for this part
         </label>
@@ -196,6 +208,7 @@ function SegmentCard({
           id={fieldId}
           rows={5}
           value={feedback}
+          readOnly={saving}
           onChange={(event) => {
             setFeedback(event.target.value);
             setMessage("");
@@ -207,23 +220,27 @@ function SegmentCard({
           type="button"
           onClick={handleSave}
           disabled={saving || !unsaved || !feedback.trim()}
-          className="mt-3 w-full rounded-lg bg-[#00566b] px-4 py-3 font-semibold text-white hover:bg-[#004353] disabled:cursor-not-allowed disabled:opacity-50"
+          className="mt-3 w-full rounded-lg bg-[#00566b] px-4 py-2.5 font-semibold text-white hover:bg-[#004353] disabled:cursor-not-allowed disabled:opacity-50"
         >
           Save Feedback
         </button>
-        <button
-          type="button"
-          onClick={handleApprove}
-          disabled={saving || approved || unsaved || !savedFeedback}
-          className="mt-3 w-full rounded-lg bg-green-700 px-4 py-3 font-semibold text-white hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {approved ? "Approved" : "Approve Part"}
-        </button>
-        {!approved && (unsaved || !savedFeedback) && (
-          <p className="mt-2 text-sm text-slate-600">
-            Write and save feedback before approving.
-          </p>
-        )}
+
+        <div className="mt-5 border-t border-slate-200 pt-4">
+          <h3 className="text-sm font-semibold">Part approval</h3>
+          {!approved && (unsaved || !savedFeedback) && (
+            <p className="mt-2 text-sm text-slate-600">
+              Write and save feedback before approving.
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={handleApprove}
+            disabled={saving || approved || unsaved || !savedFeedback}
+            className="mt-3 w-full rounded-lg bg-green-700 px-4 py-2.5 font-semibold text-white hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {approved ? "Approved" : "Approve Part"}
+          </button>
+        </div>
         <p role="status" className="mt-3 text-sm font-medium">
           {message}
         </p>
