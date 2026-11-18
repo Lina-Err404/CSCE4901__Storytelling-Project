@@ -127,7 +127,34 @@ export default function BreakoutManager({ lobby }: {lobby: Lobby}) {
             })
         );
 
+    const randomizeGroups = () => {
+        const studentIds = lobby.students.map((student) => student.id);
+        const count = rooms.length || roomCount;
 
+        if (count < 1 || studentIds.length < count * 2) {
+            setError("You need at least two students per room.");
+            return;
+        }
+
+        for (let index = studentIds.length - 1; index > 0; index--) {
+            const other = Math.floor(Math.random() * (index + 1));
+            [studentIds[index], studentIds[other]] = [
+                studentIds[other],
+                studentIds[index],
+            ];
+        }
+
+        const nextRooms = Array.from({ length: count }, (_, index) => ({
+            roomId: rooms[index]?.roomId ?? crypto.randomUUID(),
+            roomName: rooms[index]?.roomName ?? `Room ${index + 1}`,
+            studentIds: studentIds.filter(
+                (_, studentIndex) => studentIndex % count === index
+            ),
+        }));
+
+        setError(null);
+        updateRooms(nextRooms);
+    };
     const nameOf = (id: string) => lobby.students.find((s) => s.id === id)?.name ?? id;
     
 
@@ -135,13 +162,13 @@ export default function BreakoutManager({ lobby }: {lobby: Lobby}) {
     if (loading) return <p>Loading...</p>; // While the page is loading in, this loading screen will appear.
 
     return (
-        <main className="min-h-screen w-full bg-[#134790] p-6">
+        <main className="min-h-screen w-full bg-gradient-to-b from-[#0e102a] via-[#13204a] to-[#134790] p-4 sm:p-6">
             <div>{/* This div tag holds the go back button only.*/}
                  {/* Replace this href link with whatever page the teacher should return to.*/}
                 <Link className="font-bold"
                  href="/"> {"←"} Return </Link>
             </div>
-        <div className="min-h-screen w-full bg-[#C7D7EB] p-10 text-center rounded-[20px] text-[#082A56] space-y-2">
+        <div className="min-h-[75vh] space-y-4 border-4 border-[#d5def0] p-5 text-center text-white sm:p-8">
             {/* This div tag holds the entire menu for separating the students into their groups.*/}
             {error && <p className="text-[#581616]">{error}</p>}
             {saving && <p> saving...</p>}
@@ -150,7 +177,7 @@ export default function BreakoutManager({ lobby }: {lobby: Lobby}) {
                 <p className="text-[#004E68] ">Each room needs at least 2 students before saving.</p>
             )}
             
-            <h1 className="text-lg font-bold">Manual Breakout Rooms</h1>
+            <h1 className="text-lg font-bold">Assign Groups</h1>
 
 
 
@@ -180,7 +207,16 @@ export default function BreakoutManager({ lobby }: {lobby: Lobby}) {
                 onClick={addRoom} disabled={saving}> 
                 Add room 
             </button>
-
+                        <button
+                type="button"
+                className="ml-3 rounded-lg border-2 border-[#f4b657] bg-[#f0e8db] px-4 py-2 font-semibold text-slate-900 disabled:opacity-50"
+                onClick={randomizeGroups}
+                disabled={saving}
+            >
+                Randomized Groups
+            </button>
+<div className="grid gap-6 text-left md:grid-cols-[240px_minmax(0,1fr)]">
+  <aside className="rounded-lg border-4 border-[#abc7e5] bg-[#f0e8db] p-4 text-slate-900">
             <h3 className="font-semibold"> Unassigned Students </h3>{/* Students not assigned to a group are displayed under here. */}
             {unassigned.length === 0 && <p className="font-semibold">All students are assigned to a group.</p>}
             <ul>
@@ -208,11 +244,12 @@ export default function BreakoutManager({ lobby }: {lobby: Lobby}) {
                     </li>
                 ))}
             </ul>
-
+  </aside>
+  <div className="grid content-start gap-4 sm:grid-cols-2">
             {/* Once a room is created: it can be deleted, even if it is empty.
                 Once a student is in a room: they can be moved to another room or removed from the room. */}
             {rooms.map((room) => (
-                <div key={room.roomId}>
+                <div key={room.roomId} className="space-y-2 rounded-xl border border-white/30 bg-white/10 p-4">
                     <h3>
                         {room.roomName}{""}
                         <button 
@@ -242,7 +279,8 @@ export default function BreakoutManager({ lobby }: {lobby: Lobby}) {
                     </ul>
                 </div>
             ))}
-
+  </div>
+</div>
             {/* Once the teacher's selection has been made they can save it by clicking this button. */}
             <button className="bg-[#134790] text-[#FFFFFF] py-2 px-4 rounded-[15px]"
             onClick={submitRooms} disabled={saving || !dirty || tooSmall}>
