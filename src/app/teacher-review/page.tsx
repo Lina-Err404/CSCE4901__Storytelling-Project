@@ -79,8 +79,8 @@ export default function TeacherReviewPage({
   ).length;
 
   return (
-    <main className="min-h-screen bg-[#1e4d85] text-slate-900">
-      <header className="flex items-center justify-between gap-4 bg-[#19477f] px-6 py-5 text-white sm:px-10">
+    <main className="min-h-screen bg-gradient-to-b from-[#0e102a] via-[#13204a] to-[#134780] p-3 text-slate-900 outline outline-4 -outline-offset-[12px] outline-[#d5def0] sm:p-5">
+      <header className="grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-2 px-6 pt-5 text-white sm:px-10">
         <button
           type="button"
           aria-label="Go back"
@@ -89,7 +89,7 @@ export default function TeacherReviewPage({
         >
           ←
         </button>
-        <h1 className="text-lg font-semibold">Teacher Review</h1>
+        <h1 className="text-center text-2xl font-bold sm:text-3xl">Teacher Review</h1>
       </header>
 
       <div className="mx-auto max-w-6xl px-4 py-6 sm:px-8">
@@ -182,8 +182,8 @@ function SegmentCard({
 
   return (
     <section className="grid gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-      <article className="min-w-0 rounded-2xl bg-[#cad9eb] p-5 shadow-lg sm:p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <article className="min-w-0 rounded-xl border-[3px] border-[#7898bd] bg-[#f0e8db] p-5 text-[#134780] shadow-lg sm:p-6">
+        <div className="mt-4 whitespace-pre-wrap break-words border border-[#134780] bg-[#f5f2ec] p-5 leading-relaxed text-slate-900">
           <p className="text-sm font-semibold">
             {formatSection(segment.section) || `Part ${segment.order}`}
           </p>
@@ -199,7 +199,7 @@ function SegmentCard({
         </div>
       </article>
 
-      <aside className="min-w-0 self-start rounded-2xl bg-white p-5 shadow-lg">
+      <aside className="min-w-0 self-start rounded-xl border-[3px] border-[#f4b657] bg-[#f0e8db] p-5 text-[#134780] shadow-lg">
         <h3 className="mb-3 font-bold">Teacher Feedback</h3>
         <label htmlFor={fieldId} className="mb-2 block text-sm font-medium">
           Feedback for this part
