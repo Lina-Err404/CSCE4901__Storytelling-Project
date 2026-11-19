@@ -24,18 +24,29 @@ const USE_BACKEND_API = false;
 
 // Full pool of age-appropriate reactions students can pick from
 const REACTION_POOL: ReactionOption[] = [
+  // Row 1: defaults, commonly used
   { id: "heart", label: "❤️", name: "Love" },
   { id: "fire", label: "🔥", name: "Fire" },
   { id: "mindblown", label: "😲", name: "Shock" },
   { id: "sparkle", label: "✨", name: "Magic" },
   { id: "thumbsup", label: "👍", name: "Great Job" },
   { id: "laugh", label: "😂", name: "Funny" },
+
+  // Row 2: happy/praise/celebration
   { id: "party", label: "🎉", name: "Celebrate" },
   { id: "star", label: "⭐", name: "Star" },
   { id: "clap", label: "👏", name: "Applause" },
   { id: "thinking", label: "🤔", name: "Curious" },
   { id: "rocket", label: "🚀", name: "Awesome" },
   { id: "idea", label: "💡", name: "Cool Idea" },
+
+  // Row 3: sad/serious/sweet
+  { id: "sad", label: "😢", name: "Sad Moment" },
+  { id: "aww", label: "🥺", name: "Touching" },
+  { id: "suspense", label: "😱", name: "Suspense" },
+  { id: "plottwist", label: "👀", name: "Plot Twist" },
+  { id: "wholesome", label: "🥰", name: "Wholesome" },
+  { id: "sobbing", label: "😭", name: "Sobbing" },
 ];
 
 const DEFAULT_TOP_FOUR_IDS = ["heart", "fire", "mindblown", "sparkle"];
