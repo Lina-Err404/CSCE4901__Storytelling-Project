@@ -1,10 +1,12 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { onAuthStateChanged, type User } from "firebase/auth"
 import { auth } from "../../firebase-client"
 import { AuthScreen } from "../../auth-screen"
 import { ReferenceCreatingStories } from "../creatingStories"
+import StoryPromptPanel from "./StoryPromptPanel"
+import { DEFAULT_STORY_PROMPT } from "./storyPrompt"
 import StoryWorkspace from "./StoryWorkspace"
 import { useDrawingSession } from "./drawing/DrawingSession"
 import { drawingPageKey } from "./drawing/drawingModel"
@@ -24,6 +26,17 @@ export function PersonalStory({ user, mode }: { user: User; mode: "writing" | "d
   const identity = { studentId: user.uid, pageId: "drawing", storyId: null }
   const history = histories[drawingPageKey(user.uid)] ?? emptyHistory
   const [text, setText] = useState("")
+  const editor = useRef<HTMLTextAreaElement>(null)
+  const revealAppend = useRef(false)
+  useLayoutEffect(() => {
+    if (!revealAppend.current) return
+    revealAppend.current = false
+    if (editor.current && mode === "writing") editor.current.scrollTop = editor.current.scrollHeight
+  }, [text, mode])
+  function appendIdea(idea: string) {
+    revealAppend.current = true
+    setText(current => current ? `${current}\n\n${idea}` : idea)
+  }
   const [snapshot, setSnapshot] = useState<{ text: string; history: string; revision: number } | null>(null)
   const [error, setError] = useState("")
   const [attempt, retry] = useState(0)
@@ -64,11 +77,13 @@ export function PersonalStory({ user, mode }: { user: User; mode: "writing" | "d
     } catch (error) { if (mounted.current) setError(error instanceof Error ? error.message : "Could not save your page.") }
     finally { flight.current = false; if (mounted.current) setSaving(false) }
   }
-  if (!snapshot) return <section className="story-workspace" role="status">{error || "Loading your saved page..."}{error && <button type="button" onClick={() => retry(value => value + 1)}>Retry loading</button>}</section>
-  return <StoryWorkspace pages={[{ id: user.uid, label: "Your story", text, mine: true }]} index={0} myIndex={0}
+  const getRequestHeaders = useCallback(async () => ({ Authorization: `Bearer ${await user.getIdToken()}` }), [user])
+  const prompt = mode === "writing" ? <StoryPromptPanel prompt={DEFAULT_STORY_PROMPT} tools={snapshot ? { text, onTextChange: setText, onUseIdea: appendIdea, getRequestHeaders } : undefined} /> : null
+  if (!snapshot) return <>{prompt}<section className="story-workspace" role="status">{error || "Loading your saved page..."}{error && <button type="button" onClick={() => retry(value => value + 1)}>Retry loading</button>}</section></>
+  return <>{prompt}<StoryWorkspace pages={[{ id: user.uid, label: "Your story", text, mine: true }]} index={0} myIndex={0}
     studentId={user.uid} studentLabel={user.displayName || "Your page"} students={[user.uid]} mode={mode} DrawingBook={() => null} permanent
     saved={!dirty} saving={saving} error={Boolean(error)} saveStatus={saving ? "Saving..." : error ? `Save failed: ${error}` : dirty ? "Unsaved changes" : "Saved"}
-    onChangeText={setText} onSave={() => { void save() }} onJump={() => {}} onTurn={() => {}} />
+    editorRef={editor} onChangeText={setText} onSave={() => { void save() }} onJump={() => {}} onTurn={() => {}} /></>
 }
 
 export default function PersonalCreatingStories() {

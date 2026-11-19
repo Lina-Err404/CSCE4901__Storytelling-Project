@@ -2,6 +2,8 @@
 import { useId, useState } from "react"
 import { Type, SpellCheck, Lightbulb, BookOpen } from "lucide-react"
 import { PanelFrame, PointedBanner } from "./StoryDecorations"
+import GrammarSuggestions from "@/components/grammar/GrammarSuggestions"
+import WritingSuggestions from "@/components/grammar/WritingSuggestions"
 
 const bookmarks = [
   { color: "red", title: "Text Boxes", label: "Text", icon: Type },
@@ -10,13 +12,16 @@ const bookmarks = [
   { color: "gold", title: "Vocab Sheet", label: "Vocab", icon: BookOpen },
 ] as const
 
-export default function StoryPromptPanel({ prompt }: { prompt: string }) {
+export default function StoryPromptPanel({ prompt, tools }: { prompt: string; tools?: {
+  text: string; onTextChange: (text: string) => void; onUseIdea: (idea: string) => void; getRequestHeaders: () => Promise<Record<string, string>>
+} }) {
   const [selected, setSelected] = useState<(typeof bookmarks)[number] | null>(null)
   const contentId = useId()
   const headingId = useId()
   const toolHeadingId = useId()
   const SelectedIcon = selected?.icon
-  return <aside className="story-prompt-panel" aria-label="Writing tools and prompt" data-tool-open={Boolean(selected)}>
+  const assistantOpen = Boolean(tools && (selected?.title === "Grammar Help" || selected?.title === "Writing Suggestions"))
+  return <aside className="story-prompt-panel" aria-label="Writing tools and prompt" data-tool-open={Boolean(selected)} data-assistant-open={assistantOpen}>
     <div className="story-bookmarks" role="group" aria-label="Writing tools">
       {bookmarks.map((tool) => <button key={tool.color} type="button" className={`story-bookmark story-bookmark-${tool.color}`}
         aria-label={tool.title} aria-controls={contentId} aria-expanded={selected === tool}
@@ -38,12 +43,14 @@ export default function StoryPromptPanel({ prompt }: { prompt: string }) {
         <div className="story-prompt-text" tabIndex={0} aria-label="Writing prompt">{prompt}</div>
       </div>
       <div className="story-prompt-border story-tool-section" id={contentId} role="region" aria-labelledby={toolHeadingId} hidden={!selected}>
-        <div className="story-prompt-text story-tool-content" tabIndex={0} aria-label={selected ? `${selected.title} content` : undefined} aria-live="polite">
+        <div className="story-prompt-text story-tool-content" tabIndex={0} aria-label={selected ? `${selected.title} content` : undefined}>
           <div className="story-tool-empty">
             {SelectedIcon && <SelectedIcon className="story-tool-icon" aria-hidden="true" />}
             <h2 id={toolHeadingId}>{selected?.title}</h2>
-            {selected && <p>This tool is coming soon.</p>}
+            {selected && !assistantOpen && <p>This tool is coming soon.</p>}
           </div>
+          {tools && selected?.title === "Grammar Help" && <GrammarSuggestions {...tools} />}
+          {tools && selected?.title === "Writing Suggestions" && <WritingSuggestions {...tools} />}
         </div>
       </div>
     </div>

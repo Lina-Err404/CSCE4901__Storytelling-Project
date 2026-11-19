@@ -1,5 +1,5 @@
 "use client"
-import { useLayoutEffect, useRef, type ComponentType } from "react"
+import { useLayoutEffect, useRef, type ComponentType, type Ref } from "react"
 import { PointedBanner } from "./StoryDecorations"
 import DrawingWorkspace from "./drawing/DrawingWorkspace"
 
@@ -12,12 +12,13 @@ type BookProps = {
 type Props = BookProps & {
   saveStatus?: string; saving?: boolean; permanent?: boolean
   studentLabel?: string
+  editorRef?: Ref<HTMLTextAreaElement>
   DrawingBook: ComponentType<BookProps>
   studentId: string; students: string[]; onSelectStudent?: (id: string) => void
 }
 export default function StoryWorkspace(props: Props) {
   const { pages, index, myIndex, mode = "writing", onTurn, onJump, onChangeText, onSave, saved, error,
-    studentId, students, onSelectStudent } = props
+    studentId, students, onSelectStudent, editorRef } = props
   const page = pages[index]
   const editable = mode === "writing" && index === myIndex && Boolean(page?.mine)
   const turning = useRef(false)
@@ -39,7 +40,7 @@ export default function StoryWorkspace(props: Props) {
     {index !== myIndex && <button type="button" className="story-return" onClick={onJump}>Back to my page</button>}
     {/* The editor stays mounted across mode changes. Its value always comes from SetItem. */}
     <div className="story-writing-canvas" hidden={mode !== "writing"}>
-      <textarea aria-label={page?.label ?? "Your story"} value={page?.text ?? ""} readOnly={!editable}
+      <textarea ref={editorRef} aria-label={page?.label ?? "Your story"} value={page?.text ?? ""} readOnly={!editable}
         tabIndex={editable ? 0 : -1} inert={mode !== "writing"}
         onChange={(event) => { if (editable) onChangeText(event.target.value) }}
         onKeyDown={(event) => {

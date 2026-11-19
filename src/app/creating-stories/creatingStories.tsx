@@ -25,7 +25,7 @@ export function ReferenceCreatingStories({ renderWorkspace }: { renderWorkspace?
       <SidebarProvider defaultOpen={false} className="story-scene" style={{
         "--sidebar-width": "400px", "--header-height": "var(--story-toolbar-height)",
       } as CSSProperties}>
-        {mode === "writing" ? <StoryPromptPanel prompt={DEFAULT_STORY_PROMPT} /> : null}
+        {!renderWorkspace && mode === "writing" ? <StoryPromptPanel prompt={DEFAULT_STORY_PROMPT} /> : null}
         {/* Keep this owner at the same tree position when switching modes. */}
         {renderWorkspace ? renderWorkspace(mode) : <SetItem key={studentId} studentId={studentId} students={STUDENTS} mode={mode} workspace onSelectStudent={setStudentId} />}
       </SidebarProvider>

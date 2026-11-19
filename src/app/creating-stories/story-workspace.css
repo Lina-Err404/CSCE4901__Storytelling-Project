@@ -57,6 +57,46 @@
 .story-tool-icon { width: 24px; height: 24px; color: #836638; }
 .story-tool-content h2 { font: inherit; font-weight: 600; }
 .story-tool-content p { grid-column: 2; font-size: .9em; line-height: 1.5; }
+.story-prompt-panel[data-assistant-open="true"] .story-tool-section {
+  flex: 1 1 0;
+  max-height: none;
+  padding: 0;
+}
+.story-prompt-panel[data-assistant-open="true"] .story-tool-content {
+  flex: 1 1 auto;
+  padding: clamp(12px, 1.3vw, 20px);
+  border: 0;
+  white-space: normal;
+  overscroll-behavior: contain;
+}
+.story-prompt-panel[data-assistant-open="true"] .story-tool-content h2 {
+  font-size: clamp(19px, 1.6vw, 25px);
+  line-height: 1.2;
+}
+.story-assistant, .story-assistant-card { display: grid; gap: 12px; }
+.story-assistant { margin-top: 12px; }
+.story-assistant p { grid-column: auto; font-size: 1em; }
+.story-assistant-card {
+  padding: clamp(10px, 1vw, 16px);
+  border: 1px solid var(--story-gold);
+  border-radius: 10px;
+  background: var(--story-cream);
+}
+.story-assistant-card p { white-space: pre-wrap; }
+.story-assistant-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.story-tool-content > .story-assistant-actions { margin-top: 12px; }
+.story-assistant-button {
+  width: fit-content;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 8px 13px;
+  border: 1px solid #9b8050;
+  border-radius: 8px;
+  font-weight: 600;
+  background: #e6cfa1;
+}
+.story-assistant-secondary { background: #faf5eb; }
+.story-assistant-button:not(:disabled):hover { background: #e0c48e; }
 .story-bookmark-red { --bookmark-fill: #d9514e; --bookmark-stroke: #7b3436; }
 .story-bookmark-green { --bookmark-fill: #54b333; --bookmark-stroke: #22492b; }
 .story-bookmark-blue { --bookmark-fill: #4e80cc; --bookmark-stroke: #182d53; }
@@ -146,6 +186,8 @@
   .story-screen[data-mode="writing"] .story-prompt-panel { position: relative; top: auto; bottom: auto; width: min(320px, calc(100% - 48px)); height: auto; min-height: 260px; flex-shrink: 0; }
   .story-screen[data-mode="writing"] .story-prompt-heading { top: 16px; left: 8%; height: 35px; }
   .story-screen[data-mode="writing"] .story-panel-sections { position: relative; inset: auto; margin: 62px 8.2% 24px 8.7%; }
+  .story-screen[data-mode="writing"] .story-prompt-panel[data-assistant-open="true"] { height: clamp(420px, 62svh, 560px); }
+  .story-prompt-panel[data-assistant-open="true"] .story-panel-sections { position: absolute; inset: 62px 8.2% 24px 8.7%; margin: 0; }
   .story-screen[data-mode="writing"] .story-bookmarks { top: 38px; width: 48px; gap: 12px; }
   .story-screen[data-mode="writing"] .story-bookmark { height: 37px; min-height: 0; }
   .story-screen[data-mode="writing"] .story-workspace { position: relative; inset: auto; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 20px; }
