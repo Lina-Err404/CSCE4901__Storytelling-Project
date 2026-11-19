@@ -6,6 +6,7 @@ import pencilIcon from '../../../../public/images/pageAssets/pencilIcon.png'
 import spraycanIcon from '../../../../public/images/pageAssets/spraycanIcon.png'
 import eraserIcon from '../../../../public/images/pageAssets/eraserIcon.png'
 import { BRUSH_SIZES, useDrawingTools } from './drawingCanvas'
+import { useHotkey } from '@tanstack/react-hotkeys'
 
 const PALETTE_COLORS = [
   '#FFFFFF', '#000000', '#868686', '#5C3922',
@@ -24,11 +25,42 @@ function DrawingSidePanel() {
     undo, redo, clearAll, canUndo, canRedo,
   } = useDrawingTools()
 
+  //Keyboard Shortcuts
+
+  useHotkey("Mod+Z", () => undo())
+
+  useHotkey("Mod+Y", () => redo())
+
+  useHotkey("Shift+D", () => clearAll())
+
+  useHotkey("C", () => document.getElementById('Color Palette')?.focus())
+
+  useHotkey("P", () => document.getElementById('Color Picker')?.focus())
+
+  useHotkey("T", () => document.getElementById('Transparency')?.focus())
+
+  useHotkey("F", () => setSelectedTool('fill'))
+
+  //decrease brush size
+  useHotkey("[", () => setSizeIndex((prev: number) => Math.max(0, prev - 1)))
+
+  //increase brush size
+  useHotkey("]", () => setSizeIndex((prev: number) => Math.min(BRUSH_SIZES.length - 1, prev + 1)))
+
+  //switches from pencil and spray brushes
+  useHotkey("B", () => setSelectedTool(selectedTool === "pencil" ? "spray" : "pencil"))
+
+  useHotkey("E", () => setSelectedTool('eraser'))
+
+  
+
+
+
   return (
-    <div className="absolute top-10 right-0 bottom-16 z-10 flex w-60 flex-col overflow-hidden rounded-l-4xl border-3 border-solid border-[#334670] bg-[#497BC3] px-3.5 pt-4 pb-0 shadow-xl select-none">
+    <div className="absolute top-10 right-0 bottom-16 z-10 flex w-60 flex-col overflow-hidden rounded-l-4xl border-3 border-solid border-[#334670] bg-[#497BC3] px-3.5 pt-4 pb-0 shadow-xl select-none animate-slide-in-right animate-slide-distance-[100%]">
 
       {/* Top Row: Undo / Redo / Delete All — Constrained to w-full with locked font/padding */}
-      <div className="w-full flex items-center justify-between gap-1.5 mb-3.5 flex-shrink-0">
+      <div className="w-full flex items-center justify-between gap-1.5 mb-3.5 shrink-0">
         <div className="flex gap-1.5">
           <button
             type="button"
@@ -61,11 +93,12 @@ function DrawingSidePanel() {
       </div>
 
       {/* Color Palette Grid */}
-      <div className="mb-3.5 grid grid-cols-4 gap-2 flex-shrink-0 bg-[#3B66A6] p-2 rounded-xl border-2 border-[#334670]">
+      <div className="mb-3.5 grid grid-cols-4 gap-2 shrink-0 bg-[#3B66A6] p-2 rounded-xl border-2 border-[#334670]">
         {PALETTE_COLORS.map((color) => {
           const isSelected = selectedColor.toUpperCase() === color.toUpperCase()
           return (
             <button
+              id="Color Palette"
               key={color}
               type="button"
               onClick={() => setSelectedColor(color)}
@@ -84,9 +117,10 @@ function DrawingSidePanel() {
       </div>
 
       {/* Color Picker Bar */}
-      <label className="h-9 flex items-center justify-between px-3 bg-white hover:bg-gray-50 cursor-pointer mb-3 rounded-lg border-3 border-black text-black font-bold text-xs flex-shrink-0 shadow-[0_2px_0_#000]">
+      <label className="h-9 flex items-center justify-between px-3 bg-white hover:bg-gray-50 cursor-pointer mb-3 rounded-lg border-3 border-black text-black font-bold text-xs shrink-0 shadow-[0_2px_0_#000]">
         <span>Color Picker</span>
         <input
+          id="Color Picker"
           type="color"
           value={selectedColor}
           onChange={(e) => setSelectedColor(e.target.value)}
@@ -95,12 +129,13 @@ function DrawingSidePanel() {
       </label>
 
       {/* Transparency Slider */}
-      <div className="h-10 flex flex-col justify-center px-3 bg-[#1E293B] mb-3 rounded-lg border-3 border-black text-white font-bold text-[11px] flex-shrink-0 shadow-[0_2px_0_#000]">
+      <div className="h-10 flex flex-col justify-center px-3 bg-[#1E293B] mb-3 rounded-lg border-3 border-black text-white font-bold text-[11px] shrink-0 shadow-[0_2px_0_#000]">
         <div className="flex justify-between items-center mb-0.5">
           <span>Transparency</span>
           <span>{opacity}%</span>
         </div>
         <input
+          id="Transparency"
           type="range"
           min={10}
           max={100}
@@ -111,7 +146,7 @@ function DrawingSidePanel() {
       </div>
 
       {/* Fill Bucket & Brush Size Controls */}
-      <div className="h-11 mb-2 flex-shrink-0 flex items-stretch justify-between gap-2">
+      <div className="h-11 mb-2 shrink-0 flex items-stretch justify-between gap-2">
         <button
           type="button"
           onClick={() => setSelectedTool('fill')}
@@ -142,7 +177,7 @@ function DrawingSidePanel() {
                 width: `${BRUSH_SIZES[sizeIndex]}px`,
                 height: `${BRUSH_SIZES[sizeIndex]}px`,
               }}
-              className="rounded-full bg-black inline-block transition-all flex-shrink-0"
+              className="rounded-full bg-black inline-block transition-all shrink-0"
             />
           </div>
 

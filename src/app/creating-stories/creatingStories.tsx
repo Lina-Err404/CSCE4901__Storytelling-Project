@@ -17,6 +17,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
+import { useHotkey } from '@tanstack/react-hotkeys'
 
 import '../creating-stories/creating-stories.css'
 
@@ -61,6 +62,9 @@ export default function Home() {
     return () => window.removeEventListener("resize", fit)
   }, [])
 
+  //keyboard shortcuts
+  useHotkey("M", () => setMode(mode === "writing" ? "drawing" : "writing"))
+
   return (
     <main className="fixed inset-0 overflow-hidden bg-[#C3D0E5]">
       <div
@@ -80,19 +84,9 @@ export default function Home() {
         />
 
         <div className="relative min-h-0 flex-1">
-
-          {/*Component containing left side panel for writing mode (writing functions)
-            Should only appear when in writing mode
-            is currently a blank panel
-
-            <WritingSidePanel/>
-        */}
-
-
-          {/*Component containing left side panel for drawing mode (stamps and shapes)
-            Should only appear when in drawing mode
-        */}
-          <StampSidePanel />
+          
+          {/* switches left panel depending on mode*/}
+          {mode === 'drawing' ? (<StampSidePanel />) : (<WritingSidePanel/>)}
 
           <div className="absolute inset-0 z-0 flex flex-col items-center justify-center overflow-hidden bg-[#C3D0E5] pb-2">
             <div className="flex w-[1600px] shrink-0 flex-col items-center" style={{ height: DESIGN_H - 65 }}>
@@ -115,10 +109,9 @@ export default function Home() {
             </div>
           </div>
 
-          {/*Component containing right side panel for drawing mode (drawing tools)
-            Should only appear when in drawing mode
-        */}
-          <DrawingSidePanel />
+        {/* switches right panel depending on mode*/}
+        {mode === 'drawing' ? (<DrawingSidePanel />) : (<div></div>)}
+          
 
         </div>
       </div>

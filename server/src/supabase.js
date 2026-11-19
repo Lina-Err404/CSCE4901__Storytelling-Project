@@ -1,5 +1,13 @@
 const { createClient } = require('@supabase/supabase-js');
 
+function getSupabase() {
+    if (!supabase) {
+        throw new Error("Missing supabase config");
+    }
+
+    return supabase;
+}
+
 const supabaseUrl = process.env.SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -12,4 +20,4 @@ const supabase = supabaseUrl && serviceRoleKey
   })
   : null;
 
-module.exports = { supabase };
+module.exports = { supabase, getSupabase };

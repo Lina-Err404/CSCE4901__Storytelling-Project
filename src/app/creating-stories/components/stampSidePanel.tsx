@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react'
 import { SHAPE_LIST, STAMP_DRAG, useStampTools } from './drawingCanvas'
+import { useHotkey } from '@tanstack/react-hotkeys'
 
 const STAMP_FOLDERS = {
   background: [
@@ -68,11 +69,18 @@ function StampSidePanel() {
     }
   }
 
+  //keyboard shortcuts
+  useHotkey("S", () => setActiveTab(activeTab === "shapes" ? "stamps" : "shapes"))
+
+  useHotkey("ArrowLeft", () => handlePrev())
+
+  useHotkey("ArrowRight", () => handleNext())
+
   return (
-    <div className="absolute top-10 bottom-16 left-0 z-10 flex w-68 flex-col rounded-r-4xl border-3 border-solid border-[#334670] bg-[#497BC3] p-3.5 pt-4 shadow-xl select-none">
+    <div className="absolute top-10 bottom-16 left-0 z-10 flex w-68 flex-col rounded-r-4xl border-3 border-solid border-[#334670] bg-[#497BC3] p-3.5 pt-4 shadow-xl select-none animate-slide-in-left animate-slide-distance-[100%]">
 
       {/* Shapes / Stamps Segmented Toggle */}
-      <div className="h-11 bg-[#D4D4D8] grid grid-cols-2 divide-x-3 divide-solid divide-black mb-4 rounded-xl border-3 border-black border-solid flex-shrink-0 overflow-hidden shadow-[0_2px_0_#000]">
+      <div className="h-11 bg-[#D4D4D8] grid grid-cols-2 divide-x-3 divide-solid divide-black mb-4 rounded-xl border-3 border-black border-solid shrink-0 overflow-hidden shadow-[0_2px_0_#000]">
         <button
           type="button"
           onClick={() => setActiveTab('shapes')}
@@ -92,7 +100,7 @@ function StampSidePanel() {
       </div>
 
       {/* Category Switcher (Prev / Current Folder / Next) */}
-      <div className="h-10 flex justify-between items-center gap-1.5 mb-4 flex-shrink-0">
+      <div className="h-10 flex justify-between items-center gap-1.5 mb-4 shrink-0">
         <button
           type="button"
           onClick={handlePrev}
@@ -179,7 +187,7 @@ function StampSidePanel() {
       </div>
 
       {/* What can be done with a stamp that was opened for editing (right-click it on the page) */}
-      <div className="mt-2 flex flex-shrink-0 items-center justify-between gap-1.5">
+      <div className="mt-2 flex shrink-0 items-center justify-between gap-1.5">
         <button
           type="button"
           onClick={flipLayer}

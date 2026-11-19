@@ -18,6 +18,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const { admin, db } = require('./firebase');
+const { createTimerRouter } = require('./timerRoutes');
 const { createRequireStudent, createRequireTeacher } = require('./auth');
 const { supabase } = require('./supabase');
 const {
@@ -57,6 +58,14 @@ app.use(createLobbyRouter({
   jwtSecret: process.env.JWT_SECRET,
   getIo: () => io,
 }));
+
+
+// R5: Time Limit routes
+app.use(createTimerRouter({
+  getIo: () => supabaseIo
+}));
+
+
 if (supabase) {
   app.get('/supabase/profile', supabaseRequireUser, (req, res) => res.json({
     id: req.user.uid,
@@ -80,6 +89,7 @@ if (supabase) {
     error: 'Supabase lobby features are not configured',
   }));
 }
+
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((error, req, res, next) => {
   if (res.headersSent) return next(error);
