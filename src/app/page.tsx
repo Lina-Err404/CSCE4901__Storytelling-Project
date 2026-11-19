@@ -47,7 +47,7 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const isDevBypass =
       process.env.NODE_ENV !== "production" &&
       (process.env.NEXT_PUBLIC_ALLOW_DEV_MODE === "true" ||
-          process.env.NEXT_PUBLIC_USE_AUTH_EMULATOR === "true");
+          process.env.ALLOW_DEV_MODE === "true");
 
   if (!session) {
     if (isDevBypass) {
@@ -79,7 +79,7 @@ export default function Home() {
   const devMode =
       process.env.NODE_ENV !== "production" &&
       (process.env.NEXT_PUBLIC_ALLOW_DEV_MODE === "true" ||
-          process.env.NEXT_PUBLIC_USE_AUTH_EMULATOR === "true");
+          process.env.ALLOW_DEV_MODE === "true");
 
   const [user, setUser] = useState<User | null>(() =>
       devMode ? ({ id: "local-dev-teacher" } as unknown as User) : null,

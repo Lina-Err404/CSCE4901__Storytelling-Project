@@ -1,13 +1,21 @@
+import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
-import { adminAuth, db } from "@/lib/firebaseAdmin";
+import { supabase } from "../src/app/Login_Signup_Backend/supabase-client";
+import { supabaseConfigurationMissing } from "./Login_Signup_Backend/supabase-client";
+
+const db = supabase;
+
+
+function failure(error: string, status: number) {
+  return NextResponse.json({ error }, { status });
+}
 
 export async function POST(request: NextRequest) {
   try {
     // Make sure the student is authenticated (supports dev/emulator header bypass from main)
-    const authHeader = request.headers.get("authorization");
-    const devBypassEnabled =
-      process.env.NODE_ENV !== "production" &&
+  const authHeader = request.headers.get("authorization");
+  const devBypassEnabled =
+    process.env.NODE_ENV !== "production" &&
       (process.env.ALLOW_DEV_MODE === "true" ||
         process.env.USE_AUTH_EMULATOR === "true" ||
         process.env.NEXT_PUBLIC_USE_AUTH_EMULATOR === "true");
@@ -18,7 +26,9 @@ export async function POST(request: NextRequest) {
     if (devBypassEnabled && devStudentUid && devStudentUid.trim().length > 0) {
       uid = devStudentUid.trim();
     } else if (authHeader?.startsWith("Bearer ")) {
-      try {
+      // Commented out because adminAuth was a FB function
+      // Needs further research
+    /*  try {
         const decoded = await adminAuth.verifyIdToken(
           authHeader.slice(7).trim()
         );
@@ -28,7 +38,7 @@ export async function POST(request: NextRequest) {
           { error: "Authentication required." },
           { status: 401 }
         );
-      }
+       } */
     }
 
     if (!uid) {
@@ -40,10 +50,10 @@ export async function POST(request: NextRequest) {
 
     // Safely read the request body (accepts either lobbyCode or code)
     const body = await request.json().catch(() => null);
-    const record =
-      body && typeof body === "object"
-        ? (body as Record<string, unknown>)
-        : null;
+  const record =
+    body && typeof body === "object" && !Array.isArray(body)
+      ? (body as Record<string, unknown>)
+      : null;
 
     const lobbyCode = record?.lobbyCode ?? record?.code;
 
@@ -56,7 +66,7 @@ export async function POST(request: NextRequest) {
         { error: "Please enter a valid 6-character lobby code." },
         { status: 400 }
       );
-    }
+  }
 
     // Convert the code to uppercase so lookup is case insensitive
     const code = lobbyCode.trim().toUpperCase();
@@ -123,7 +133,7 @@ export async function POST(request: NextRequest) {
           playerCount: currentCount,
           alreadyJoined: true,
         };
-      }
+    }
 
       // Lobby has reached its player limit
       if (
@@ -158,8 +168,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       {
-        success: true,
-        code,
+      success: true,
+      code,
         playerCount: result.playerCount,
         alreadyJoined: result.alreadyJoined,
       },

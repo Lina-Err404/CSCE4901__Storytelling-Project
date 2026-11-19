@@ -16,10 +16,6 @@ server/node_modules/
 
 # testing
 /coverage
-/.firebase-data/
-/firebase-export-*/
-**/firestore-debug.log
-**/firebase-debug.log
 **/ui-debug.log
 
 # next.js
@@ -52,5 +48,4 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 env.download
-lib/firebaseAdmin.ts
 env.local

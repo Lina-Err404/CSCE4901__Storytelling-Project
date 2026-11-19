@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { User } from "@supabase/supabase-js"
 import { CoverBook, CoverFrame } from "@/components/auth/CoverArtwork";
 import { logIn, signUp } from "./Login_Signup_Backend/authServiceSB";
-// This is currently located in a commit to main v v v
+// originally was from ./Login_Signup_Backend/supabase-client on branch v v v
 import { supabaseConfigurationMissing } from "./supabase-lobbies/supabase-client.ts";
 
 type AuthView =
@@ -239,7 +239,7 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
                 Log In
               </button>
               <p id="login-note" className="form-note" role="status">
-                {submissionNotice //||
+                {submissionNotice ||
                   (supabaseConfigurationMissing
                     ? "Set the public Supabase configuration before signing in."
                     : "Sign in with your teacher account to open the host lobby.")
@@ -356,7 +356,7 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
                 Create Account
               </button>
               <p id="signup-note" className="form-note" role="status">
-                {submissionNotice //||
+                {submissionNotice ||
                   (supabaseConfigurationMissing
                     ? "Set the public Supabase configuration before creating an account."
                     : "Create your teacher account to host classroom lobbies.")
