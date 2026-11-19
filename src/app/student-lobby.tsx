@@ -77,7 +77,6 @@ export function StudentLobby({ user }: { user: User }) {
     setConnection("Connecting...");
 
     try {
-      // Come back to this if not using Supabase Auth for student accounts
       const sessionData = supabase ? await supabase.auth.getSession() : null;
       const accessToken = sessionData?.data.session?.access_token;
       if (!accessToken) {
