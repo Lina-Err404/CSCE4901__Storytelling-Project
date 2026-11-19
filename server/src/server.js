@@ -49,6 +49,10 @@ const {
 } = require('./');
 
 const {
+  createBreakoutRoomRoutes,
+} = require('./breakoutRoomRoutes');
+
+const {
   createWaitingRoomRoutes,
 } = require('./waitingRoomRoutes');
 
@@ -147,6 +151,17 @@ if (supabase) {
       requireStudent: supabaseRequireStudent,
       jwtSecret: process.env.JWT_SECRET,
       getIo: () => supabaseIo,
+    })
+  );
+
+  /*
+   * R9/R20: Breakout Room persistence
+   */
+  app.use(
+    '/supabase',
+    createBreakoutRoomRoutes({
+      supabase,
+      requireTeacher: supabaseRequireTeacher,
     })
   );
 
