@@ -7,7 +7,7 @@ async function verifyTokenAndRole(clientOrAdmin, token) {
     }
 
     const user = data.user;
-    let role = user.app_metadata?.role || user.user_metadata?.role || null;
+    let role = user.app_metadata?.role || null;
 
     if (!role && typeof clientOrAdmin.from === 'function') {
       const { data: profile } = await clientOrAdmin
@@ -23,23 +23,13 @@ async function verifyTokenAndRole(clientOrAdmin, token) {
     return { uid: user.id, role };
   }
 
-  // 2. Fallback for legacy unit tests passing a mocked Firebase `admin` object
-  if (typeof clientOrAdmin?.auth === 'function') {
-    const claims = await clientOrAdmin.auth().verifyIdToken(token);
-    if (typeof claims?.uid !== 'string' || claims.uid.length === 0) {
-      throw new Error('Invalid token');
-    }
-    return { uid: claims.uid, role: claims.role || null };
-  }
-
   throw new Error('Auth client is not configured');
 }
 
 function createAuthMiddleware({ client, requiredRole, allowedRoles }) {
   const devBypassEnabled =
       process.env.NODE_ENV !== 'production' &&
-      (process.env.ALLOW_DEV_MODE === 'true' ||
-          process.env.USE_AUTH_EMULATOR === 'true');
+      process.env.ALLOW_DEV_MODE === 'true';
 
   return async function authenticate(req, res, next) {
     const authorization = req.get('authorization');
@@ -92,7 +82,7 @@ function createRequireStudent(client) {
   return createAuthMiddleware({ client, allowedRoles: [undefined, null, 'student'] });
 }
 
-function createFirebaseSocketAuth(client) {
+function createSupabaseSocketAuth(client) {
   return async function verifySocketToken(socket, next) {
     const token = socket.handshake.auth?.token;
     if (typeof token !== 'string' || token.length === 0) {
@@ -111,8 +101,7 @@ function createFirebaseSocketAuth(client) {
 }
 
 module.exports = {
-  createFirebaseSocketAuth,
-  createSupabaseSocketAuth: createFirebaseSocketAuth,
+  createSupabaseSocketAuth,
   createRequireStudent,
   createRequireTeacher,
 };

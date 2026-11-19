@@ -3,12 +3,11 @@ const { io: createClient } = require('socket.io-client');
 const request = require('supertest');
 const {
   JWT_SECRET,
-  clearFirestore,
+  clearDatabase,
   seedClass,
   seedRoster,
   seedLobby,
   startTestServer,
-  deleteFirebaseApp,
   db,
 } = require('./helpers');
 
@@ -19,11 +18,11 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  await clearFirestore();
+  await clearDatabase();
   await seedClass();
   await seedLobby();
   await seedRoster('class-one', [{ studentId: 'student-one', displayName: 'Roster Name' }]);
-  await db.collection('lobbies').doc('lobby-one').collection('students').doc('student-one').set({
+  await db.setStudentSeat('lobby-one', 'student-one', {
     displayName: 'Roster Name',
     kicked: false,
   });
@@ -31,7 +30,6 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await testServer.stop();
-  await deleteFirebaseApp();
 });
 
 function token(secret = JWT_SECRET, options = {}) {
@@ -101,14 +99,14 @@ describe('Socket.io authentication', () => {
   });
 
   test('rejects a token after its seat is kicked', async () => {
-    await db.collection('lobbies').doc('lobby-one').collection('students').doc('student-one').update({ kicked: true });
+    await db.setStudentSeat('lobby-one', 'student-one', { kicked: true });
     const error = await rejectedConnection(connect(token()));
 
     expect(error.message).toBe('unauthorized');
   });
 
   test('rejects a token after the lobby closes', async () => {
-    await db.collection('lobbies').doc('lobby-one').update({ status: 'closed' });
+    await db.setLobbyStatus('lobby-one', 'closed');
     const error = await rejectedConnection(connect(token()));
 
     expect(error.message).toBe('unauthorized');

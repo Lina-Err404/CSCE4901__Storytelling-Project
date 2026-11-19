@@ -20,7 +20,7 @@ function validStudentId(value) {
   return typeof value === 'string' && STUDENT_ID_PATTERN.test(value);
 }
 
-function createClassesRouter({ db, admin, requireTeacher, getIo }) {
+function createClassesRouter({ db, requireTeacher, getIo }) {
   const router = express.Router();
   const upload = multer({
     storage: multer.memoryStorage(),
@@ -29,14 +29,12 @@ function createClassesRouter({ db, admin, requireTeacher, getIo }) {
 
   async function requireClassOwner(req, res, next) {
     try {
-      const classRef = db.collection('classes').doc(req.params.id);
-      const classSnapshot = await classRef.get();
-      if (!classSnapshot.exists || classSnapshot.data().teacherId !== req.user.uid) {
+      const classData = await db.getClass(req.params.id);
+      if (!classData || classData.teacherId !== req.user.uid) {
         return res.status(403).json({ error: 'Forbidden' });
       }
 
-      req.classRef = classRef;
-      req.classData = classSnapshot.data();
+      req.classData = classData;
       return next();
     } catch (error) {
       return next(error);
@@ -61,20 +59,12 @@ function createClassesRouter({ db, admin, requireTeacher, getIo }) {
       return res.status(400).json({ error: 'Name must be 1-80 characters' });
     }
 
-    const classRef = await db.collection('classes').add({
-      teacherId: req.user.uid,
-      studentIds: [],
-      name,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-    return res.status(201).json({ classId: classRef.id, name });
+    const schoolClass = await db.createClass({ teacherId: req.user.uid, name });
+    return res.status(201).json({ classId: schoolClass.classId, name: schoolClass.name });
   });
 
   router.get('/classes', requireTeacher, async (req, res) => {
-    const snapshot = await db.collection('classes').where('teacherId', '==', req.user.uid).get();
-    return res.json({
-      classes: snapshot.docs.map((doc) => ({ classId: doc.id, ...doc.data() })),
-    });
+    return res.json({ classes: await db.listClasses(req.user.uid) });
   });
 
   router.post('/classes/:id/roster', requireTeacher, requireClassOwner, receiveRosterFile, async (req, res) => {
@@ -130,18 +120,7 @@ function createClassesRouter({ db, admin, requireTeacher, getIo }) {
     });
 
     for (let offset = 0; offset < accepted.length; offset += BATCH_SIZE) {
-      const batch = db.batch();
-      const batchRows = accepted.slice(offset, offset + BATCH_SIZE);
-      batchRows.forEach(({ studentId, displayName }) => {
-        const studentRef = req.classRef.collection('roster').doc(studentId);
-        batch.set(studentRef, { displayName }, { merge: true });
-      });
-      if (batchRows.length > 0) {
-        batch.update(req.classRef, {
-          studentIds: admin.firestore.FieldValue.arrayUnion(...batchRows.map(({ studentId }) => studentId)),
-        });
-      }
-      await batch.commit();
+      await db.upsertRoster(req.params.id, accepted.slice(offset, offset + BATCH_SIZE));
     }
 
     return res.json({ imported: accepted.length, rejected });
@@ -158,20 +137,12 @@ function createClassesRouter({ db, admin, requireTeacher, getIo }) {
       return res.status(400).json({ error: 'Name must be 1-50 characters' });
     }
 
-    const batch = db.batch();
-    batch.set(req.classRef.collection('roster').doc(studentId), { displayName });
-    batch.update(req.classRef, {
-      studentIds: admin.firestore.FieldValue.arrayUnion(studentId),
-    });
-    await batch.commit();
+    await db.upsertRoster(req.params.id, [{ studentId, displayName }]);
     return res.json({ studentId, displayName });
   });
 
   router.get('/classes/:id/roster', requireTeacher, requireClassOwner, async (req, res) => {
-    const snapshot = await req.classRef.collection('roster').get();
-    return res.json({
-      students: snapshot.docs.map((doc) => ({ studentId: doc.id, ...doc.data() })),
-    });
+    return res.json({ students: await db.listRoster(req.params.id) });
   });
 
   router.delete('/classes/:id/roster/:studentId', requireTeacher, requireClassOwner, async (req, res) => {
@@ -180,37 +151,7 @@ function createClassesRouter({ db, admin, requireTeacher, getIo }) {
       return res.status(400).json({ error: 'Invalid studentId' });
     }
 
-    const rosterRef = req.classRef.collection('roster').doc(studentId);
-
-    const activeLobbyId = await db.runTransaction(async (transaction) => {
-      const classSnapshot = await transaction.get(req.classRef);
-      const rosterSnapshot = await transaction.get(rosterRef);
-      if (!classSnapshot.exists || !rosterSnapshot.exists) return null;
-
-      const currentLobbyId = classSnapshot.data().activeLobbyId;
-      if (typeof currentLobbyId === 'string') {
-        const lobbyRef = db.collection('lobbies').doc(currentLobbyId);
-        const lobbySnapshot = await transaction.get(lobbyRef);
-        if (lobbySnapshot.exists && ['open', 'locked'].includes(lobbySnapshot.data().status)) {
-          const seatRef = lobbyRef.collection('students').doc(studentId);
-          const seatSnapshot = await transaction.get(seatRef);
-          if (seatSnapshot.exists) {
-            transaction.update(seatRef, { kicked: true });
-            transaction.delete(rosterRef);
-            transaction.update(req.classRef, {
-              studentIds: admin.firestore.FieldValue.arrayRemove(studentId),
-            });
-            return currentLobbyId;
-          }
-        }
-      }
-
-      transaction.delete(rosterRef);
-      transaction.update(req.classRef, {
-        studentIds: admin.firestore.FieldValue.arrayRemove(studentId),
-      });
-      return null;
-    });
+    const activeLobbyId = await db.deleteRosterStudent(req.params.id, studentId);
 
     const io = typeof getIo === 'function' ? getIo() : undefined;
     if (io && activeLobbyId) {

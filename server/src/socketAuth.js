@@ -12,10 +12,10 @@ function createSocketAuth({ supabase, db, jwtSecret }) {
 
       const claims = jwt.verify(token, jwtSecret, { algorithms: ['HS256'] });
       if (
-          claims.role !== 'student' ||
-          typeof claims.lobbyId !== 'string' ||
-          typeof claims.studentId !== 'string' ||
-          !STUDENT_ID_PATTERN.test(claims.studentId)
+        claims.role !== 'student' ||
+        typeof claims.lobbyId !== 'string' ||
+        typeof claims.studentId !== 'string' ||
+        !STUDENT_ID_PATTERN.test(claims.studentId)
       ) {
         throw new Error('Invalid claims');
       }
