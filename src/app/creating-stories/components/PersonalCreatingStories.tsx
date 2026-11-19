@@ -66,7 +66,7 @@ export function PersonalStory({ user, mode }: { user: User; mode: "writing" | "d
   }
   if (!snapshot) return <section className="story-workspace" role="status">{error || "Loading your saved page..."}{error && <button type="button" onClick={() => retry(value => value + 1)}>Retry loading</button>}</section>
   return <StoryWorkspace pages={[{ id: user.uid, label: "Your story", text, mine: true }]} index={0} myIndex={0}
-    studentId={user.uid} students={[user.uid]} mode={mode} DrawingBook={() => null} permanent
+    studentId={user.uid} studentLabel={user.displayName || "Your page"} students={[user.uid]} mode={mode} DrawingBook={() => null} permanent
     saved={!dirty} saving={saving} error={Boolean(error)} saveStatus={saving ? "Saving..." : error ? `Save failed: ${error}` : dirty ? "Unsaved changes" : "Saved"}
     onChangeText={setText} onSave={() => { void save() }} onJump={() => {}} onTurn={() => {}} />
 }

@@ -3,6 +3,22 @@ import { adminAuth, db } from "@/lib/firebaseAdmin"
 import { readDrawingDocument } from "@/src/app/creating-stories/components/drawing/drawingDocument"
 
 export const runtime = "nodejs"
+async function boundedBody(request: NextRequest) {
+  const reader = request.body?.getReader()
+  if (!reader) throw new Error("invalid")
+  const chunks: Uint8Array[] = []
+  let bytes = 0
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      bytes += value.length
+      if (bytes > 800_000) { await reader.cancel(); throw new Error("invalid") }
+      chunks.push(value)
+    }
+    return Buffer.concat(chunks, bytes).toString("utf8")
+  } finally { reader.releaseLock() }
+}
 async function identity(request: NextRequest) {
   const token = request.headers.get("authorization")?.match(/^Bearer ([^\s]+)$/i)?.[1]
   if (!token) throw new Error("unauthorized")
@@ -34,8 +50,7 @@ export async function PUT(request: NextRequest) {
   try {
     const owner = await identity(request)
     if (Number(request.headers.get("content-length")) > 800_000) return NextResponse.json({ error: "Story data exceeds the save limit." }, { status: 413 })
-    const raw = await request.text()
-    if (new TextEncoder().encode(raw).length > 800_000) throw new Error("invalid")
+    const raw = await boundedBody(request)
     let body, drawing
     try {
       body = JSON.parse(raw)

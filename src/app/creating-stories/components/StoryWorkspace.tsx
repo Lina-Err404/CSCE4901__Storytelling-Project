@@ -11,6 +11,7 @@ type BookProps = {
 }
 type Props = BookProps & {
   saveStatus?: string; saving?: boolean; permanent?: boolean
+  studentLabel?: string
   DrawingBook: ComponentType<BookProps>
   studentId: string; students: string[]; onSelectStudent?: (id: string) => void
 }
@@ -29,7 +30,7 @@ export default function StoryWorkspace(props: Props) {
   }
   return <section className="story-workspace" data-mode={mode} aria-label={mode === "writing" ? "Writing workspace" : "Drawing workspace"}>
     <PointedBanner className="story-student-banner">
-      <span>{page?.id ?? studentId}</span>
+      <span>{props.studentLabel ?? page?.id ?? studentId}</span>
       {onSelectStudent && <select className="story-student-picker" aria-label="Current student (development only)"
         title="Change current student (development only)" value={studentId} onChange={(event) => onSelectStudent(event.target.value)}>
         {students.map((id) => <option key={id} value={id}>{id}</option>)}
