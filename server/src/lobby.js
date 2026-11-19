@@ -2,9 +2,7 @@ const crypto = require('crypto');
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
-const { supabase } = require('./supabase');
 
-// Define current standards for IDs, game modes, and join codes
 const STUDENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const CLASS_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const GAME_MODES = new Set(['divide']);
@@ -22,7 +20,6 @@ function validStudentId(value) {
   return typeof value === 'string' && STUDENT_ID_PATTERN.test(value);
 }
 
-// Uses crypto to create a new join lobby code
 function generateJoinCode() {
   let joinCode = '';
   while (joinCode.length < 6) {
@@ -34,8 +31,6 @@ function generateJoinCode() {
   return joinCode;
 }
 
-// createLobbyRouter; creates the lobby.
-// Ref stuff in lobbyRoutes.js?
 function createLobbyRouter({ db, requireTeacher, requireStudent, jwtSecret, getIo }) {
   if (typeof jwtSecret !== 'string' || jwtSecret.length < 32) {
     throw new Error('jwtSecret must be at least 32 characters');
@@ -52,7 +47,6 @@ function createLobbyRouter({ db, requireTeacher, requireStudent, jwtSecret, getI
   async function requireLobbyOwner(req, res, next) {
     try {
       const lobby = await db.getLobby(req.params.id);
-
       if (!lobby || lobby.teacherId !== req.user.uid) {
         return res.status(403).json({ error: 'Forbidden' });
       }
@@ -69,20 +63,12 @@ function createLobbyRouter({ db, requireTeacher, requireStudent, jwtSecret, getI
       return res.status(400).json({ error: 'classId is required' });
     }
 
-    const { data, error } = await supabase
-      .from('classes')
-      .select()
-      .eq('class_id', classId);
-      const classSnapshot = data;
+    const classSnapshot = await db.getClass(classId);
     if (!classSnapshot || classSnapshot.teacherId !== req.user.uid) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const { data1, error1 } = await supabase
-      .from('classes')
-      .select('class_id')
-    const lobbies = data1;
-    return res.json({ lobbies });
+    return res.json({ lobbies: await db.listLobbies(classId) });
   });
 
   router.post('/lobbies', requireTeacher, async (req, res) => {
@@ -107,32 +93,17 @@ function createLobbyRouter({ db, requireTeacher, requireStudent, jwtSecret, getI
       return res.status(400).json({ error: 'Invalid game mode' });
     }
 
-    const { data2, error2 } = await supabase
-      .from('classes')
-      .select()
-      .eq('class_id', classId);
-      const classSnapshot = data2;
+    const classSnapshot = await db.getClass(classId);
     if (!classSnapshot || classSnapshot.teacherId !== req.user.uid) {
       return res.status(403).json({ error: 'Forbidden' });
     }
 
-    const { data3, error3} = await supabase
-      .from('classes')
-      .select()
-      .eq('class_id', classId);
-      const classRef = data3;
+    const classRef = db.collection('classes').doc(classId);
 
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const joinCode = generateJoinCode();
-      const { data4, error4 } = await supabase
-        .from('lobbies')
-        .select('lobby_id')
-        const lobbyRef = data4;
-      const { data5, error5 } = await supabase
-        .from('lobbies')
-        .select()
-        .eq('join_code', joinCode);
-        const codeRef = data5;
+      const lobbyRef = db.collection('lobbies').doc();
+      const codeRef = db.collection('lobbyCodes').doc(joinCode);
 
       try {
         const result = await db.runTransaction(async (transaction) => {
@@ -144,9 +115,7 @@ function createLobbyRouter({ db, requireTeacher, requireStudent, jwtSecret, getI
           const activeLobbyId = currentClass.data().activeLobbyId;
           if (typeof activeLobbyId === 'string') {
             const activeLobbyRef = db.collection('lobbies').doc(activeLobbyId);
-
             const activeLobby = await transaction.get(activeLobbyRef);
-            // this too!!!
             if (activeLobby.exists && activeLobby.data().status !== 'closed') {
               return { activeLobbyId };
             }
@@ -187,7 +156,7 @@ function createLobbyRouter({ db, requireTeacher, requireStudent, jwtSecret, getI
       }
     } //end for loop
 
-    //return res.status(500).json({ error: 'Unable to create lobby' });
+    return res.status(500).json({ error: 'Unable to create lobby' });
   }); //end router.post('/lobbies')
 
   router.post('/lobbies/join', joinLimiter, requireStudent, async (req, res) => {
@@ -265,12 +234,11 @@ function createLobbyRouter({ db, requireTeacher, requireStudent, jwtSecret, getI
         cleanDisplayName(profileName) ||
         cleanDisplayName(req.body?.name) ||
         'Student';
-
-      const joinResult = throwOnError(await supabase
-        .from('lobbies')
-        .select('lobby_id', 'student_id', 'status',)
-        .eq('lobby_id', lobbyId)
-        .maybeSingle());
+      const joinResult = await db.joinLobby({
+        lobbyId: lobby.lobbyId,
+        studentId,
+        displayName,
+      });
 
       const token = jwt.sign(
         { role: 'student', lobbyId: lobby.lobbyId, studentId },
@@ -328,6 +296,6 @@ function createLobbyRouter({ db, requireTeacher, requireStudent, jwtSecret, getI
   });
 
   return router;
-} // end of createLobbyRouter
+}
 
 module.exports = { createLobbyRouter };
