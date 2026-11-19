@@ -1,25 +1,27 @@
 # Storytelling Server Modules
 
-The API uses Supabase Auth for bearer-token verification and a server-only Supabase service-role key for database operations. `src/supabase.js` loads the repository-root `.env` and fails fast if the server URL or service-role key is missing.
+The API uses Firebase Admin only. `src/firebase.js` loads the repository-root `.env` with dotenv and initializes Application Default Credentials using `GOOGLE_APPLICATION_CREDENTIALS`.
 
 ## Wiring
 
-The API is mounted at the root by `src/server.js`:
+The R13 API is mounted at `/api` by `src/server.js`:
 
-```text
-POST /classes
-POST /classes/:id/roster
-POST /lobbies
-POST /lobbies/join
+```js
+POST /api/lobbies                  { "classId": "..." }
+POST /api/lobbies/:code/join       Authorization: Bearer <Firebase ID token>
 ```
 
-Teacher and student API routes verify Supabase access tokens. Teachers must have `role: "teacher"` in trusted `app_metadata` or in their `public.profiles` row. Use `npm run grant-teacher -- <SUPABASE_AUTH_USER_UUID>` from this directory to assign the teacher role with the service key.
+Both endpoints verify Firebase ID tokens; host creation additionally requires the `role: "teacher"` custom claim. Assign that claim to a provisioned account with `npm run grant-teacher -- <FIREBASE_UID>` from this directory. The Firebase Auth emulator is used during local development; no credentials are logged.
 
-Apply the migrations in the repository's `supabase/migrations/` directory before running `npm run dev:api` or the test suite. Set `JWT_SECRET` to a secret of at least 32 characters. `npm test` runs isolated unit tests and requires no emulator or database.
+Run the API with `npm run dev:api` and the Firestore tests with `npm test` from this directory. The root `npm run dev` starts the app and emulators with local Firestore import/export persistence under the ignored `.firebase-data/` directory. To print scratch-case results against your configured Firebase project or emulator, run `node scratch.js`; that file is git-ignored and removes its temporary records.
 
 ## Data Model
 
-- `classes` and `class_roster` store teacher-owned classes and imported student names.
-- `lobbies` uses a six-character unique join code and stores lobby state and limits.
-- `lobby_participants` stores seats and revocation status.
-- RPC functions in `202611160001_r13_supabase_backend.sql` perform multi-table and concurrent updates atomically.
+- `classes/{classId}` retains existing class fields and has `studentIds` for roster enrollment.
+- `classes/{classId}/roster/{studentId}` remains the current roster display-name source.
+- `Lobbies/{code}` uses the required case-sensitive collection and stores the lobby's existing fields plus `hostId`, `classId`, `participantIds`, and `createdAt`.
+
+## Known Gaps
+
+- The root `firestore.rules` denies direct client reads and writes; service access is through the Admin-backed API.
+- Existing lowercase lobby modules remain for the earlier prototype; the R13 route is mounted from `lobbyRoutes.js` and uses `Lobbies/{code}`.

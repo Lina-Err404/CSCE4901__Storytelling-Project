@@ -29,7 +29,7 @@ export default function TeacherReviewPage({
   const [message, setMessage] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
 
-  // Load the story and its saved feedback/approval from Supabase.
+  // Load the story and its saved feedback/approval from Firestore.
   useEffect(() => {
     // Ignore results that arrive after the page has unmounted or changed story.
     let active = true;
@@ -61,7 +61,7 @@ export default function TeacherReviewPage({
     setReloadKey((key) => key + 1);
   }
 
-  // Save feedback to Supabase so it stays after a refresh.
+  // Save feedback to Firestore so it stays after a refresh.
   async function saveFeedback() {
     const trimmed = feedback.trim();
     setSaving(true);
@@ -78,7 +78,7 @@ export default function TeacherReviewPage({
     }
   }
 
-  // Save approval to Supabase.
+  // Save approval to Firestore.
   async function approveStory() {
     setSaving(true);
     try {

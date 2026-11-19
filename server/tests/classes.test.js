@@ -1,10 +1,11 @@
 const request = require('supertest');
 const {
   db,
-  clearDatabase,
+  clearFirestore,
   seedClass,
   seedLobby,
   startTestServer,
+  deleteFirebaseApp,
 } = require('./helpers');
 
 let testServer;
@@ -15,12 +16,13 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  await clearDatabase();
+  await clearFirestore();
   classId = await seedClass();
 });
 
 afterAll(async () => {
   await testServer.stop();
+  await deleteFirebaseApp();
 });
 
 function teacherRequest(method, path, teacherId = 'teacher-one') {
@@ -34,8 +36,9 @@ describe('class roster routes', () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ imported: 2, rejected: [] });
-    const roster = await db.listRoster(classId);
-    expect(roster.map((student) => [student.studentId, student.displayName])).toEqual([
+    const roster = await db.collection('classes').doc(classId).collection('roster').get();
+    expect((await db.collection('classes').doc(classId).get()).data().studentIds).toEqual(['s-1', 's-2']);
+    expect(roster.docs.map((doc) => [doc.id, doc.data().displayName])).toEqual([
       ['s-1', 'Ada'],
       ['s-2', 'Grace'],
     ]);
@@ -61,7 +64,7 @@ describe('class roster routes', () => {
         { row: 4, reason: 'Invalid studentId' },
       ],
     });
-    expect((await db.listRoster(classId))).toHaveLength(1);
+    expect((await db.collection('classes').doc(classId).collection('roster').get()).size).toBe(1);
   });
 
   test('rejects 501 data rows with 400', async () => {
@@ -101,15 +104,18 @@ describe('class roster routes', () => {
     await teacherRequest('put', `/classes/${classId}/roster/student-one`)
       .send({ name: 'Roster Student' });
     await seedLobby({ classId });
-    await db.setStudentSeat('lobby-one', 'student-one', { displayName: 'Roster Student', kicked: false });
-    expect((await db.getClass(classId)).activeLobbyId).toBe('lobby-one');
-    expect((await db.getLobby('lobby-one')).status).toBe('open');
-    expect((await db.getSeat('lobby-one', 'student-one')).status).toBe('joined');
+    await db.collection('classes').doc(classId).update({ activeLobbyId: 'lobby-one' });
+    const seatRef = db.collection('lobbies').doc('lobby-one').collection('students').doc('student-one');
+    await seatRef.set({ displayName: 'Roster Student', kicked: false });
+    expect((await db.collection('classes').doc(classId).get()).data().activeLobbyId).toBe('lobby-one');
+    expect((await db.collection('lobbies').doc('lobby-one').get()).data().status).toBe('open');
+    expect((await seatRef.get()).data().kicked).toBe(false);
 
     const response = await teacherRequest('delete', `/classes/${classId}/roster/student-one`);
 
     expect(response.status).toBe(200);
-    expect((await db.getSeat('lobby-one', 'student-one')).status).toBe('kicked');
-    expect(await db.listRoster(classId)).toEqual([]);
+    expect((await seatRef.get()).data().kicked).toBe(true);
+    expect((await db.collection('classes').doc(classId).collection('roster').doc('student-one').get()).exists).toBe(false);
+    expect((await db.collection('classes').doc(classId).get()).data().studentIds).not.toContain('student-one');
   });
 });

@@ -1,12 +1,36 @@
+import { mkdirSync } from "node:fs";
 import { spawn } from "node:child_process";
 
-const developmentSecret = "local-development-secret-change-this-before-deploying";
+mkdirSync(".firebase-data", { recursive: true });
+
 const processes = [
   {
     name: "web",
     command: process.execPath,
     args: ["node_modules/next/dist/bin/next", "dev"],
-    env: { ...process.env, NEXT_PUBLIC_ALLOW_DEV_MODE: "true" },
+    env: {
+      ...process.env,
+      NEXT_PUBLIC_USE_AUTH_EMULATOR: "true",
+      FIRESTORE_EMULATOR_HOST:
+        process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8080",
+      FIREBASE_AUTH_EMULATOR_HOST:
+        process.env.FIREBASE_AUTH_EMULATOR_HOST || "127.0.0.1:9099",
+    },
+  },
+  {
+    name: "firestore",
+    command: process.execPath,
+    args: [
+      "server/node_modules/firebase-tools/lib/bin/firebase.js",
+      "emulators:start",
+      "--only",
+      "firestore,auth",
+      "--project",
+      "demo-storytelling",
+      "--import=.firebase-data",
+      "--export-on-exit",
+    ],
+    env: process.env,
   },
   {
     name: "api",
@@ -14,8 +38,13 @@ const processes = [
     args: ["server/src/server.js"],
     env: {
       ...process.env,
-      ALLOW_DEV_MODE: "true",
-      JWT_SECRET: process.env.JWT_SECRET || developmentSecret,
+      FIRESTORE_EMULATOR_HOST:
+        process.env.FIRESTORE_EMULATOR_HOST || "127.0.0.1:8080",
+      FIREBASE_AUTH_EMULATOR_HOST:
+        process.env.FIREBASE_AUTH_EMULATOR_HOST || "127.0.0.1:9099",
+      JWT_SECRET:
+        process.env.JWT_SECRET ||
+        "local-development-secret-change-this-before-deploying",
     },
   },
 ];

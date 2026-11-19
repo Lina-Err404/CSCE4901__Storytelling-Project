@@ -1,7 +1,7 @@
 import { Lobby } from "./breakoutRooms";
 
 // Temporary mock lobby data for Sprint 1.
-// This can later be replaced with Supabase data.
+// This can later be replaced with Firebase/Firestore data.
 export const mockLobbies: Lobby[] = [
   {
     lobbyId: "lobby1",

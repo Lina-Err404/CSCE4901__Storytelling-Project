@@ -3,11 +3,12 @@ const request = require('supertest');
 const {
   db,
   JWT_SECRET,
-  clearDatabase,
+  clearFirestore,
   seedClass,
   seedRoster,
   seedLobby,
   startTestServer,
+  deleteFirebaseApp,
 } = require('./helpers');
 const { createLobbyRouter } = require('../src/lobby');
 const requireTeacher = (req, res, next) => next();
@@ -20,12 +21,13 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  await clearDatabase();
+  await clearFirestore();
   classId = await seedClass();
 });
 
 afterAll(async () => {
   await testServer.stop();
+  await deleteFirebaseApp();
 });
 
 function teacherRequest(method, path, teacherId = 'teacher-one') {
@@ -83,6 +85,7 @@ describe('lobby routes', () => {
   test('factory rejects a missing or short JWT secret', () => {
     expect(() => createLobbyRouter({
       db,
+      admin: {},
       requireTeacher,
       jwtSecret: 'too-short',
       getIo: () => undefined,
@@ -101,8 +104,8 @@ describe('lobby routes', () => {
       lobbyId: 'lobby-one',
       studentId: 'student-one',
     });
-    const seat = await db.getSeat('lobby-one', 'student-one');
-    expect(seat).toMatchObject({ displayName: 'Typed Name', status: 'joined' });
+    const seat = await db.collection('lobbies').doc('lobby-one').collection('students').doc('student-one').get();
+    expect(seat.data()).toMatchObject({ displayName: 'Typed Name', kicked: false });
   });
 
   test('rejects missing student authentication even when the body claims a roster ID', async () => {
@@ -131,36 +134,28 @@ describe('lobby routes', () => {
   test.each([
     ['wrong code', async () => {}],
     ['code references a nonexistent lobby', async () => {
-      await db.setCode('ZZZ999', 'missing-lobby');
+      await db.collection('lobbyCodes').doc('ABC234').set({ lobbyId: 'missing-lobby' });
     }],
     ['malformed student ID', async () => {}],
     ['locked lobby', async () => {}],
     ['closed lobby', async () => {}],
     ['kicked student', async () => {
-      await db.setStudentSeat('lobby-one', 'student-one', { kicked: true });
+      await db.collection('lobbies').doc('lobby-one').collection('students').doc('student-one').set({ kicked: true });
     }],
-  ])('rejects %s', async (reason, prepare) => {
+  ])('returns the identical generic failure for %s', async (reason, prepare) => {
     const status = reason === 'locked lobby' ? 'locked' : reason === 'closed lobby' ? 'closed' : 'open';
     await seedLobby({ status });
     if (status === 'closed') {
-      await db.setCode('ABC234', 'lobby-one');
+      await db.collection('lobbyCodes').doc('ABC234').set({ lobbyId: 'lobby-one' });
     }
     await prepare();
 
-    const code = reason === 'wrong code' ? 'ZZZZZZ' : reason === 'code references a nonexistent lobby' ? 'ZZZ999' : 'ABC234';
+    const code = reason === 'wrong code' ? 'ZZZZZZ' : 'ABC234';
     const studentId = reason === 'malformed student ID' ? 'a/b' : 'student-one';
     const response = await join(code, studentId);
 
-    const expected = {
-      'wrong code': [404, { error: 'Lobby not found' }],
-      'code references a nonexistent lobby': [404, { error: 'Lobby not found' }],
-      'malformed student ID': [400, { error: 'Invalid lobby code' }],
-      'locked lobby': [409, { error: 'Lobby has already started' }],
-      'closed lobby': [409, { error: 'Lobby has already started' }],
-      'kicked student': [403, { error: 'Student seat is unavailable' }],
-    }[reason];
-    expect(response.status).toBe(expected[0]);
-    expect(response.body).toEqual(expected[1]);
+    expect(response.status).toBe(401);
+    expect(response.body).toEqual({ error: 'Could not join' });
   });
 
   test('rejoining upserts one seat instead of creating duplicates', async () => {
@@ -169,8 +164,8 @@ describe('lobby routes', () => {
 
     const responses = await Promise.all([join(), join()]);
     expect(responses.map((response) => response.status)).toEqual([200, 200]);
-    const seats = await db.listSeats('lobby-one');
-    expect(seats).toHaveLength(1);
+    const seats = await db.collection('lobbies').doc('lobby-one').collection('students').get();
+    expect(seats.size).toBe(1);
   });
 
   test('returns 403 for non-owner patch, kick, and list requests', async () => {
@@ -192,7 +187,7 @@ describe('lobby routes', () => {
     const response = await teacherRequest('patch', '/lobbies/lobby-one').send({ status: 'closed' });
 
     expect(response.status).toBe(200);
-    expect(await db.getCodeLobbyId('ABC234')).toBeNull();
+    expect((await db.collection('lobbyCodes').doc('ABC234').get()).exists).toBe(false);
     const repeated = await teacherRequest('patch', '/lobbies/lobby-one').send({ status: 'open' });
     expect(repeated.status).toBe(409);
     expect(repeated.body).toEqual({ error: 'Lobby is closed' });
@@ -200,8 +195,8 @@ describe('lobby routes', () => {
 
   test('lists only non-kicked students', async () => {
     await seedLobby();
-    await db.setStudentSeat('lobby-one', 'active', { displayName: 'Active', kicked: false });
-    await db.setStudentSeat('lobby-one', 'removed', { displayName: 'Removed', kicked: true });
+    await db.collection('lobbies').doc('lobby-one').collection('students').doc('active').set({ displayName: 'Active', kicked: false });
+    await db.collection('lobbies').doc('lobby-one').collection('students').doc('removed').set({ displayName: 'Removed', kicked: true });
     const response = await teacherRequest('get', '/lobbies/lobby-one/students');
 
     expect(response.status).toBe(200);
@@ -211,7 +206,7 @@ describe('lobby routes', () => {
   test('a student with a valid code can still join even after being removed from the roster', async () => {
     await seedLobby();
     await seedRoster(classId, [{ studentId: 'student-one', displayName: 'Roster Name' }]);
-    await db.deleteRosterStudent(classId, 'student-one');
+    await db.collection('classes').doc(classId).collection('roster').doc('student-one').delete();
 
     const response = await join();
     expect(response.status).toBe(200);
