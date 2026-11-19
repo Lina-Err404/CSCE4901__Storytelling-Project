@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { onAuthStateChanged, type User } from "firebase/auth";
+import type { User } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
-import { auth } from "../firebase-client";
+import { supabase } from "../Login_Signup_Backend/supabase-client";
 import { StudentLobby } from "../student-lobby";
 
 export default function JoinPage() {
@@ -12,29 +12,48 @@ export default function JoinPage() {
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   useEffect(() => {
-    if (!auth) {
+    if (!supabase) {
       router.replace("/");
       return;
     }
 
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    let active = true;
+
+    void supabase.auth.getSession().then(({ data }) => {
+      if (!active) return;
+      const currentUser = data.session?.user ?? null;
       if (!currentUser) {
         router.replace("/");
         return;
       }
-
       setUser(currentUser);
       setCheckingAuth(false);
     });
 
-    return unsubscribe;
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!active) return;
+      const currentUser = session?.user ?? null;
+      if (!currentUser) {
+        router.replace("/");
+        return;
+      }
+      setUser(currentUser);
+      setCheckingAuth(false);
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
   }, [router]);
 
   if (checkingAuth || !user) {
     return (
-      <main className="p-8 text-sm text-slate-600">
-        Checking sign-in...
-      </main>
+        <main className="p-8 text-sm text-slate-600">
+          Checking sign-in...
+        </main>
     );
   }
 
