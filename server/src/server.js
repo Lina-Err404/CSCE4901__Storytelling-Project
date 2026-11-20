@@ -19,6 +19,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const { admin, db } = require('./firebase');
 const { createTimerRouter } = require('./timerRoutes');
+const { createReactionsRouter } = require('./reactionsRoutes');
 const { createRequireStudent, createRequireTeacher } = require('./auth');
 const { supabase } = require('./supabase');
 const {
@@ -67,6 +68,13 @@ app.use(createTimerRouter({
 
 
 if (supabase) {
+
+    // R6/R7: Give and View Reactions
+  app.use('/reactions', createReactionsRouter({
+    supabase,
+    requireStudent: supabaseRequireStudent,
+  }));
+
   app.get('/supabase/profile', supabaseRequireUser, (req, res) => res.json({
     id: req.user.uid,
     role: req.user.role,
