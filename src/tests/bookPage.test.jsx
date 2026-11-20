@@ -3,6 +3,12 @@ import { render, screen, fireEvent, act } from "@testing-library/react"
 import "@testing-library/jest-dom"
 import BookPage from "../app/creating-stories/components/bookPage"
 
+jest.mock("../app/creating-stories/components/drawingCanvas", () => ({
+  DrawingCanvas: () => null,
+  DrawingSnapshot: () => null,
+  setDrawingOwner: jest.fn(),
+}))
+
 const pages = [
   { id: "amy", name: "amy", label: "amy’s story", text: "amy text", mine: false, drawing: null },
   { id: "ben", name: "ben", label: "Your story", text: "ben text", mine: true, drawing: null },
