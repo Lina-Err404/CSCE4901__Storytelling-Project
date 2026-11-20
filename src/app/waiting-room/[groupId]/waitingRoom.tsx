@@ -1,100 +1,92 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { Fondamento, Nunito } from "next/font/google";
 import styles from "./waitingRoom.module.css";
 
-const display = Fondamento({ weight: "400", subsets: ["latin"] });
-const ui = Nunito({ weight: ["700", "800"], subsets: ["latin"] });
+type Props = { groupId: string };
+type Member = { id: string; name: string; isYou?: boolean };
 
-// Placeholder data. We'll replace these with real values later.
-const PLAYERS = [
+const SLOT_COUNT = 6;
+
+// Placeholder until your teammate's real data is hooked up
+const MOCK_MEMBERS: Member[] = [
   { id: "1", name: "Ezra" },
-  { id: "2", name: "Alessia" },
+  { id: "2", name: "Alessia", isYou: true },
   { id: "3", name: "Priya" },
 ];
-const MY_ID = "2";
-const MAX_PLAYERS = 6;
 
-const TIPS = [
-  { title: "How to play", body: "Each player adds one sentence at a time. Build on what came before!" },
-  { title: "On your turn", body: "Your box lights up when it's your turn. Keep your sentence short." },
-  { title: "Have fun", body: "There are no wrong answers. Silly stories are welcome." },
-];
-
-function Sparkle({ size = 24, className = "" }: { size?: number; className?: string }) {
+export default function WaitingRoom({ groupId }: Props) {
   return (
-    <svg className={className} width={size} height={size} viewBox="0 0 24 24" aria-hidden>
-      <path fill="currentColor" d="M12 0C13 8 16 11 24 12C16 13 13 16 12 24C11 16 8 13 0 12C8 11 11 8 12 0Z" />
-    </svg>
-  );
-}
+    <main className={styles.page} data-group-id={groupId}>
+      <div className={styles.frame} aria-hidden />
 
-export default function WaitingRoom({ groupId }: { groupId: string }) {
-  const [tip, setTip] = useState(0);
-
-  useEffect(() => {
-    const timer = setInterval(() => setTip((n) => (n + 1) % TIPS.length), 6000);
-    return () => clearInterval(timer);
-  }, []);
-
-  // Always show MAX_PLAYERS slots: real players first, then empty ones
-  const slots = Array.from({ length: MAX_PLAYERS }, (_, i) => PLAYERS[i] ?? null);
-
-  return (
-    <main className={`${styles.page} ${ui.className}`}>
-      <div className={styles.frame}>
-        <div className={styles.layout}>
-          {/* LEFT: illustration */}
-          <div className={styles.panel}>
-            <div className={styles.panelInner}>
-              <Sparkle className={styles.star1} size={44} />
-              <Sparkle className={styles.star2} size={26} />
-              <h1 className={`${styles.title} ${display.className}`}>
-                Collab<br />Storytelling
-              </h1>
+      <div className={styles.spread}>
+        <section className={`${styles.leaf} ${styles.leafLeft}`}>
+          <img src="/assets/Clouds.svg"      alt="" className={`${styles.art} ${styles.clouds}`} />
+          <div className={styles.leafBox}>
+            <div className={styles.storyCol}>
+                <img src="/assets/poster_card.svg" alt="" className={`${styles.art} ${styles.cardArt}`} />
+                <img src="/assets/Moons.svg"       alt="" className={`${styles.art} ${styles.moons}`} />
+                <img src="/assets/stars.svg"       alt="" className={`${styles.art} ${styles.stars}`} />
+                <img src="/assets/Animated_star1.svg" alt="" className={`${styles.art} ${styles.star1}`} />
+                <img src="/assets/Animated_star2.svg" alt="" className={`${styles.art} ${styles.star2}`} />
+                <img src="/assets/Animated_star3.svg" alt="" className={`${styles.art} ${styles.star3}`} />
             </div>
           </div>
+        </section>
 
-          {/* RIGHT: lobby */}
-          <div className={styles.lobby}>
-            <h2 className={`${styles.heading} ${display.className}`}>Waiting for members...</h2>
-            <div className={styles.divider}><span /><Sparkle size={18} /><span /></div>
-
-            <ul className={styles.grid}>
-              {slots.map((p, i) =>
-                p ? (
-                  <li key={p.id} className={`${styles.card} ${p.id === MY_ID ? styles.you : ""}`}>
-                    {p.id === MY_ID && <span className={styles.badge}>YOU</span>}
-                    <div className={styles.avatar}>{p.name[0].toUpperCase()}</div>
-                    <span className={styles.name}>{p.name}</span>
-                  </li>
-                ) : (
-                  <li key={`empty-${i}`} className={styles.empty} aria-label="Empty spot">?</li>
-                )
-              )}
-            </ul>
-
-            <section className={styles.howto} aria-live="polite">
-              <p className={styles.status}>
-                <Sparkle size={10} /> Your teacher will start the story soon <Sparkle size={10} />
-              </p>
-              <h2>{TIPS[tip].title}</h2>
-              <p>{TIPS[tip].body}</p>
-              <div className={styles.dots}>
-                {TIPS.map((_, n) => (
-                  <button
-                    key={n}
-                    aria-label={`Show tip ${n + 1}`}
-                    onClick={() => setTip(n)}
-                    className={n === tip ? styles.dotActive : styles.dot}
-                  />
-                ))}
+        <section className={`${styles.leaf} ${styles.leafRight}`}>
+          <div className={styles.leafBox}>
+            <div className={styles.rightCol}>
+              <header className={styles.heading}>
+                <h1 className={styles.headingText}>Waiting for members...</h1>
+                <div className={styles.divider} aria-hidden>
+                  <img src="/assets/divider_sparkle.svg" alt="" className={styles.dividerArt} />
+                </div>
+              </header>
+                <ul className={styles.members} aria-label="Group members">
+                  {Array.from({ length: SLOT_COUNT }, (_, i) => {
+                    const m = MOCK_MEMBERS[i];
+                    if (!m) {
+                      return (
+                        <li key={`empty-${i}`} className={`${styles.slot} ${styles.slotEmpty}`} aria-label="Waiting for a member">
+                          <span className={styles.qmark} aria-hidden>?</span>
+                        </li>
+                      );
+                    }
+                    return (
+                        <li
+                          key={`member-${m.id}`}
+                          className={`${styles.slot} ${styles.slotFilled} ${m.isYou ? styles.slotYou : ""}`}
+                        >
+                        {m.isYou && <span className={styles.youBadge}>You</span>}
+                        <span className={styles.avatar} aria-hidden>{m.name[0].toUpperCase()}</span>
+                        <span className={styles.memberName}>{m.name}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              <div className={styles.info}>
+                <p className={styles.teacherLine}>
+                  <img src="/assets/spark.svg" alt="" aria-hidden className={styles.spark} />
+                  Your teacher will start the story soon
+                  <img src="/assets/spark.svg" alt="" aria-hidden className={styles.spark} />
+                </p>
+                <div className={styles.infoRule} aria-hidden />
+                <h2 className={styles.howTitle}>How to play</h2>
+                <p className={styles.howBody}>
+                  Each player adds one sentence at a time.
+                  <br />
+                  Build on what came before!
+                </p>
+                <div className={styles.dots} aria-hidden>
+                  <span className={`${styles.dot} ${styles.dotOn}`} />
+                  <span className={styles.dot} />
+                  <span className={styles.dot} />
+                </div>
               </div>
-            </section>
+            </div>
           </div>
-        </div>
+        </section>
       </div>
+      <div className={styles.crease} aria-hidden />
     </main>
   );
 }

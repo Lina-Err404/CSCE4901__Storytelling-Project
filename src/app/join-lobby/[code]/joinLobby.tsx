@@ -27,7 +27,7 @@ export default function JoinLobby({ players = [] }: { players?: Player[] }) {
         </div>
 
         <h1 className={styles.title}>You're in!</h1>
-        <p className={styles.subtitle}>Waiting for teacher to make groups...</p>
+        <p className={styles.subtitle}>Waiting for host to make groups...</p>
 
         {/* Player Slots*/}
         <ul className={styles.slots} aria-label="Players in lobby">
