@@ -100,8 +100,8 @@ function StorySignIn({ initialError, onSignedIn }) {
     )
 }
 
-// each student has 2 pages in the book, writing and drawing
-// everyone's pages can be read, but a student can only edit their own
+// Each student has two pages in the book: writing and drawing.
+// Everyone's pages can be read, but a student can only edit their own.
 const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" }) => {
     const selectedIndex = students.indexOf(studentId)
     const studentsKey = students.join(",")
@@ -118,6 +118,7 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
 
     const myIndex = students.findIndex((id) => stories[id]?.assignedToYou)
     const ownedStudentId = myIndex >= 0 ? students[myIndex] : studentId
+    const drawing = useDrawingStatus(myIndex)
 
     useEffect(() => {
         let mounted = true
@@ -183,7 +184,7 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
         return () => { supabase.removeChannel(channel) }
     }, [authLoading, session, storyId, studentsKey])
 
-    // listen to everyone's drawings too, same as the stories
+    // Subscribe to everyone's drawings once authenticated; update ownership after story sections load.
     useEffect(() => {
         if (authLoading || !session) return
         setDrawingStory(storyId, students, myIndex)
@@ -195,7 +196,7 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
         return () => { supabase.removeChannel(channel) }
     }, [authLoading, session, storyId, studentsKey, myIndex])
 
-    // get the display name of every student in the book
+    // Get the display name of every student in the book.
     useEffect(() => {
         if (!session) return
         const loadNames = async () => {
@@ -224,7 +225,12 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
             name: names[id] ?? "A student",
             label: isMine ? "Your story" : `${names[id] ?? "A student"}’s story`,
             text: documentText(writingDocument),
-    const drawing = useDrawingStatus(myIndex) // saved / error state of this student's drawing
+            writingDocument,
+            mine: isMine,
+            drawing: null,
+        }
+    })
+
     const savedDocument = stories[ownedStudentId]?.writingDocument ?? EMPTY_DOCUMENT
     const writingSaved = draft === null || JSON.stringify(draft) === JSON.stringify(savedDocument)
 
@@ -253,13 +259,13 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
 
     const makeSegment = async () => stories[ownedStudentId]?.segmentId ?? null
 
-    // saves the writing and the drawing; one after the other so the row exists before the drawing needs it
+    // Save writing and drawing together.
     const save = async () => {
         await saveWriting()
         if (myIndex >= 0) await saveDrawing(myIndex, makeSegment)
     }
 
-    // turning a page away from owned page saves it
+    // Turning away from the owned page saves it.
     const turn = (dir) => {
         if (index === myIndex) void save()
         setIndex((i) => i + (dir === "next" ? 1 : -1))
