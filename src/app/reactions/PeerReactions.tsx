@@ -5,7 +5,9 @@ import PeerReactions from "@/app/reactions/PeerReactions";
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+// check SetItem.js to confirm your exact client path/export (e.g. `@/utils/supabase` or `@/lib/supabase`)
+import supabase from "@/utils/supabase";
 
 interface PeerReactionsProps {
   segmentId: string;
@@ -19,10 +21,10 @@ interface ReactionOption {
   name: string;
 }
 
-// Flip to true once the port 4000 backend /reactions route is live
-const USE_BACKEND_API = false;
+// backend /reactions route (proxied via /api/reactions) is live
+const USE_BACKEND_API = true;
 
-// Full pool of age-appropriate reactions students can pick from
+// full pool of age-appropriate reactions students can pick from
 const REACTION_POOL: ReactionOption[] = [
   // Row 1: defaults, commonly used
   { id: "heart", label: "❤️", name: "Love" },
@@ -61,6 +63,16 @@ type StoredSegmentReactions = Record<
     byUser: Record<string, string>; // studentId -> reactionId
   }
 >;
+
+async function getSupabaseAuth() {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  return {
+    token: session?.access_token ?? null,
+    uid: session?.user?.id ?? null,
+  };
+}
 
 function readAllSegmentReactions(): StoredSegmentReactions {
   if (typeof window === "undefined") return {};
@@ -120,20 +132,61 @@ export default function PeerReactions({
   const [userReacted, setUserReacted] = useState<string | null>(null);
   const [animatingId, setAnimatingId] = useState<string | null>(null);
 
-  // Top 4 customization state
+  // top 4 customization state
   const [topFourIds, setTopFourIds] = useState<string[]>(DEFAULT_TOP_FOUR_IDS);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [replaceSlot, setReplaceSlot] = useState<number>(0);
 
-  // Load user's saved Top 4 reactions
+  // load user's saved Top 4 reactions
   useEffect(() => {
     setTopFourIds(readUserTopFour(currentUserId));
     setPickerOpen(false);
   }, [currentUserId]);
 
-  // Load reactions for this specific segmentId (R7: View Reactions)
+  const fetchBackendReactions = useCallback(async () => {
+    if (!segmentId) return;
+    try {
+      const { token, uid } = await getSupabaseAuth();
+      if (!token) {
+        console.warn("[PeerReactions] No Supabase session token; sign in as a student to load reactions.");
+        return;
+      }
+
+      const res = await fetch(
+        `/api/reactions?segmentId=${encodeURIComponent(segmentId)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!res.ok) {
+        console.error("[PeerReactions] GET /api/reactions failed:", res.status, await res.text());
+        return;
+      }
+
+      const data = await res.json();
+      setCounts(data.counts || {});
+      const activeStudentId = uid || currentUserId;
+      const mine = data.reactions?.find(
+        (r: { student_id: string; reaction_type: string }) =>
+          r.student_id === activeStudentId
+      );
+      setUserReacted(mine ? mine.reaction_type : null);
+    } catch (err) {
+      console.error("[PeerReactions] GET /api/reactions error:", err);
+    }
+  }, [segmentId, currentUserId]);
+
+  // load reactions for this specific segmentId (R7: View Reactions)
   useEffect(() => {
     if (!segmentId) return;
+
+    if (USE_BACKEND_API) {
+      fetchBackendReactions();
+      return;
+    }
 
     const loadFromLocal = () => {
       const all = readAllSegmentReactions();
@@ -144,26 +197,6 @@ export default function PeerReactions({
 
     loadFromLocal();
 
-    async function fetchReactions() {
-      if (!USE_BACKEND_API) return;
-      try {
-        const res = await fetch(`/api/reactions?segmentId=${segmentId}`);
-        if (res.ok) {
-          const data = await res.json();
-          setCounts(data.counts || {});
-          const mine = data.reactions?.find(
-            (r: { student_id: string; reaction_type: string }) =>
-              r.student_id === currentUserId
-          );
-          setUserReacted(mine ? mine.reaction_type : null);
-        }
-      } catch {
-        // Falls back to local state cleanly
-      }
-    }
-
-    fetchReactions();
-
     const onStorageSync = () => loadFromLocal();
     window.addEventListener("collab-reactions-updated", onStorageSync);
     window.addEventListener("storage", onStorageSync);
@@ -171,63 +204,105 @@ export default function PeerReactions({
       window.removeEventListener("collab-reactions-updated", onStorageSync);
       window.removeEventListener("storage", onStorageSync);
     };
-  }, [segmentId, currentUserId]);
+  }, [segmentId, currentUserId, fetchBackendReactions]);
 
-  // Handle reaction click on a peer's story (R6: Give Reactions)
+  // handle reaction click on a peer's story (R6: Give Reactions)
   const handleReact = async (reactionType: string) => {
     if (readOnly || !segmentId) return;
 
     setAnimatingId(reactionType);
     setTimeout(() => setAnimatingId(null), 300);
 
-    const all = readAllSegmentReactions();
-    const currentSeg = all[segmentId] ?? { counts: {}, byUser: {} };
-    const nextCounts = { ...currentSeg.counts };
-    const nextByUser = { ...currentSeg.byUser };
-    const previousReaction = nextByUser[currentUserId] ?? null;
+    // local-only fallback mode
+    if (!USE_BACKEND_API) {
+      const all = readAllSegmentReactions();
+      const currentSeg = all[segmentId] ?? { counts: {}, byUser: {} };
+      const nextCounts = { ...currentSeg.counts };
+      const nextByUser = { ...currentSeg.byUser };
+      const previousReaction = nextByUser[currentUserId] ?? null;
 
-    // Clicking the same reaction toggles it off; clicking a new one switches it
-    let nextSelected: string | null = reactionType;
-    if (previousReaction === reactionType) {
-      if (nextCounts[reactionType] > 0) nextCounts[reactionType] -= 1;
-      delete nextByUser[currentUserId];
-      nextSelected = null;
-    } else {
-      if (previousReaction && nextCounts[previousReaction] > 0) {
-        nextCounts[previousReaction] -= 1;
+      let nextSelected: string | null = reactionType;
+      if (previousReaction === reactionType) {
+        if (nextCounts[reactionType] > 0) nextCounts[reactionType] -= 1;
+        delete nextByUser[currentUserId];
+        nextSelected = null;
+      } else {
+        if (previousReaction && nextCounts[previousReaction] > 0) {
+          nextCounts[previousReaction] -= 1;
+        }
+        nextCounts[reactionType] = (nextCounts[reactionType] || 0) + 1;
+        nextByUser[currentUserId] = reactionType;
       }
-      nextCounts[reactionType] = (nextCounts[reactionType] || 0) + 1;
-      nextByUser[currentUserId] = reactionType;
+
+      all[segmentId] = { counts: nextCounts, byUser: nextByUser };
+      writeAllSegmentReactions(all);
+
+      setCounts(nextCounts);
+      setUserReacted(nextSelected);
+      return;
     }
 
-    all[segmentId] = { counts: nextCounts, byUser: nextByUser };
-    writeAllSegmentReactions(all);
+    // backend API mode (optimistic update + rollback on error)
+    const prevCounts = counts;
+    const prevReaction = userReacted;
+    const nextCounts = { ...prevCounts };
+
+    let nextSelected: string | null = reactionType;
+    if (prevReaction === reactionType) {
+      if ((nextCounts[reactionType] || 0) > 0) nextCounts[reactionType] -= 1;
+      nextSelected = null;
+    } else {
+      if (prevReaction && (nextCounts[prevReaction] || 0) > 0) {
+        nextCounts[prevReaction] -= 1;
+      }
+      nextCounts[reactionType] = (nextCounts[reactionType] || 0) + 1;
+    }
 
     setCounts(nextCounts);
     setUserReacted(nextSelected);
 
-    if (USE_BACKEND_API) {
-      try {
-        await fetch("/api/reactions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            segmentId,
-            studentId: currentUserId,
-            reactionType: nextSelected,
-          }),
-        });
-      } catch {
-        // Backend route pending integration
+    try {
+      const { token, uid } = await getSupabaseAuth();
+      if (!token || !uid) {
+        console.warn("[PeerReactions] No Supabase session token; sign in as a student to react.");
+        setCounts(prevCounts);
+        setUserReacted(prevReaction);
+        return;
       }
+
+      const res = await fetch("/api/reactions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          segmentId,
+          studentId: uid,
+          reactionType: nextSelected,
+        }),
+      });
+
+      if (!res.ok) {
+        console.error("[PeerReactions] POST /api/reactions failed:", res.status, await res.text());
+        setCounts(prevCounts);
+        setUserReacted(prevReaction);
+        return;
+      }
+
+      // sync latest counts from Supabase
+      await fetchBackendReactions();
+    } catch (err) {
+      console.error("[PeerReactions] POST /api/reactions error:", err);
+      setCounts(prevCounts);
+      setUserReacted(prevReaction);
     }
   };
 
-  // Swap an emoji from the pool into the user's Top 4 bar
+  // swap an emoji from the pool into the user's Top 4 bar
   const handlePickEmoji = (emojiId: string) => {
     const existingIdx = topFourIds.indexOf(emojiId);
     if (existingIdx !== -1) {
-      // If already in Top 4, focus that slot to replace next
       setReplaceSlot(existingIdx);
       return;
     }
@@ -244,12 +319,12 @@ export default function PeerReactions({
     setReplaceSlot(0);
   };
 
-  // Build the reactions to display on the bar
+  // build the reactions to display on the bar
   const topFourOptions = topFourIds
     .map((id) => REACTION_POOL.find((r) => r.id === id))
     .filter((r): r is ReactionOption => Boolean(r));
 
-  // If viewing own page (R7), also show any other emoji from the pool that received > 0 reactions
+  // if viewing own page (R7), also show any other emoji from the pool that received > 0 reactions
   const extraReceivedOptions = readOnly
     ? REACTION_POOL.filter(
         (r) => !topFourIds.includes(r.id) && (counts[r.id] || 0) > 0
@@ -260,7 +335,7 @@ export default function PeerReactions({
 
   return (
     <div className="relative flex items-center gap-2 rounded-2xl border border-[#d7cce7] bg-[#f5f0fa]/95 px-3 py-1.5 shadow-sm select-none">
-      {/* Popover to customize Top 4 emojis */}
+      {/* popover to customize Top 4 emojis */}
       {pickerOpen && !readOnly && (
         <div className="absolute bottom-full left-1/2 z-30 mb-2 w-64 -translate-x-1/2 rounded-2xl border-2 border-[#514267] bg-white p-3 shadow-xl">
           <div className="mb-1.5 flex items-center justify-between">
@@ -299,7 +374,7 @@ export default function PeerReactions({
             Click a slot above, then pick an emoji below:
           </p>
 
-          {/* Pool of 12 emojis */}
+          {/* pool of 18 emojis */}
           <div className="grid grid-cols-6 gap-1.5">
             {REACTION_POOL.map((rx) => {
               const inTopFour = topFourIds.includes(rx.id);
@@ -353,7 +428,7 @@ export default function PeerReactions({
         })}
       </div>
 
-      {/* + / Edit Top 4 button on peer pages */}
+      {/* + / edit Top 4 button on peer pages */}
       {!readOnly && (
         <button
           type="button"
