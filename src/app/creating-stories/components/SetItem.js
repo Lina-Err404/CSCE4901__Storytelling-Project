@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import supabase from '@/src/utils/supabase'
 import BookPage from "./bookPage"
+import { setDrawingStory, loadDrawings, saveDrawing, useDrawingStatus } from "./drawingCanvas"
 
 const EMPTY_DOCUMENT = { version: 1, runs: [] }
 
