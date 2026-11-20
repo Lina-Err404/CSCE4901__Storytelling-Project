@@ -91,12 +91,15 @@ function createRequireTeacher(supabase) {
   return createSupabaseAuthMiddleware({ supabase, requiredRole: 'teacher' });
 }
 
-function createRequireStudent(supabase) {
+function createRequireSupabaseStudent(supabase) {
   return createSupabaseAuthMiddleware({ supabase, requiredRole: 'student' });
 }
 
+const createRequireStudent = createRequireSupabaseStudent;
+
 module.exports = {
   requireSupabaseTeacher,
+  createRequireSupabaseStudent,
   createRequireStudent,
   createRequireTeacher,
   createRequireUser,

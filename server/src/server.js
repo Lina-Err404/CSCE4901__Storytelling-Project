@@ -20,9 +20,9 @@ const { Server } = require('socket.io');
 const { admin, db } = require('./firebase');
 const { createTimerRouter } = require('./timerRoutes');
 const { createRequireStudent, createRequireTeacher } = require('./auth');
-const { supabase } = require('./supabase');
+const { supabase, getSupabase } = require('./supabase');
 const {
-  createRequireStudent: createSupabaseRequireStudent,
+  createRequireSupabaseStudent,
   createRequireTeacher: createSupabaseRequireTeacher,
   createRequireUser: createSupabaseRequireUser,
 } = require('./supabaseAuth');
@@ -33,6 +33,7 @@ const {
   createClassesRouter,
   createLobbyRouter,
   createSocketAuth,
+  createStoryRouter,
 } = require('./');
 
 const port = Number(process.env.PORT || 4000);
@@ -40,7 +41,8 @@ const port = Number(process.env.PORT || 4000);
 const requireTeacher = createRequireTeacher(admin);
 const requireStudent = createRequireStudent(admin);
 const supabaseRequireTeacher = supabase && createSupabaseRequireTeacher(supabase);
-const supabaseRequireStudent = supabase && createSupabaseRequireStudent(supabase);
+const requireStoryStudent = supabase && createRequireSupabaseStudent(supabase);
+const supabaseRequireStudent = requireStoryStudent;
 const supabaseRequireUser = supabase && createSupabaseRequireUser(supabase);
 const app = express();
 const server = http.createServer(app);
@@ -84,15 +86,23 @@ if (supabase) {
     jwtSecret: process.env.JWT_SECRET,
     getIo: () => supabaseIo,
   }));
+  app.use(createStoryRouter({
+    requireSupabaseStudent: requireStoryStudent,
+    getSupabase,
+  }));
 } else {
   app.use('/supabase', (req, res) => res.status(503).json({
     error: 'Supabase lobby features are not configured',
+  }));
+  app.use(['/stories', '/story-segments'], (req, res) => res.status(503).json({
+    error: 'Supabase story features are not configured',
   }));
 }
 
 app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((error, req, res, next) => {
   if (res.headersSent) return next(error);
+  console.error('API request failed:', error);
   return res.status(500).json({ error: 'Internal server error' });
 });
 
