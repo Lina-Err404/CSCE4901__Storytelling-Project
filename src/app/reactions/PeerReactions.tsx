@@ -7,7 +7,7 @@ import PeerReactions from "@/app/reactions/PeerReactions";
 
 import { useState, useEffect, useCallback } from "react";
 // check SetItem.js to confirm your exact client path/export (e.g. `@/utils/supabase` or `@/lib/supabase`)
-import supabase from "@/utils/supabase";
+import supabase from "@/src/utils/supabase";
 
 interface PeerReactionsProps {
   segmentId: string;
