@@ -111,21 +111,28 @@ function validDrawingData(drawingData) {
     typeof drawingData !== 'object' ||
     Array.isArray(drawingData) ||
     drawingData.version !== 1 ||
-    !Array.isArray(drawingData.shapes) ||
-    drawingData.shapes.length > MAX_DRAWING_SHAPES ||
-    drawingData.shapes.some((shape) => !shape || typeof shape !== 'object' || Array.isArray(shape))
-  ) {
+function validDrawingData(drawingData) {
+  if (!drawingData || typeof drawingData !== 'object' || Array.isArray(drawingData)) {
     return false;
   }
 
+  const isV1 =
+    drawingData.version === 1 &&
+    Array.isArray(drawingData.shapes) &&
+    drawingData.shapes.length <= MAX_DRAWING_SHAPES &&
+    !drawingData.shapes.some((shape) => !shape || typeof shape !== 'object' || Array.isArray(shape));
+
+  const isV2 =
+    drawingData.version === 2 &&
+    ((drawingData.encoding === 'gzip-base64' && typeof drawingData.data === 'string') ||
+      (Array.isArray(drawingData.strokes) &&
+        Array.isArray(drawingData.fills) &&
+        Array.isArray(drawingData.stamps)));
+
+  if (!isV1 && !isV2) return false;
+
   return Buffer.byteLength(JSON.stringify(drawingData), 'utf8') <= MAX_DRAWING_BYTES;
 }
-
-function textFromWritingDocument(writingDocument) {
-  return writingDocument.runs.map(({ text }) => text).join('');
-}
-
-function plainWritingDocument(text) {
   return {
     version: 1,
     runs: text ? [{ text, marks: {} }] : [],
