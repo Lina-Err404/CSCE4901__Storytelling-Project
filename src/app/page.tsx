@@ -445,9 +445,9 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900">
+    <main className="min-h-screen bg-gradient-to-b from-[#0e102a] via-[#13204a] to-[#134780] text-[#134780]">
       <div className="flex min-h-screen">
-        <aside className="hidden w-64 shrink-0 border-r border-slate-200 bg-white p-5 md:flex md:flex-col">
+        <aside className="hidden w-64 shrink-0 border-r border-[#abc7e5] bg-[#f0e8db] p-5 md:flex md:flex-col">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-600 text-2xl text-white">
               📖
@@ -504,7 +504,7 @@ export default function Home() {
         </aside>
 
         <section className="min-w-0 flex-1">
-          <header className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4 md:px-8">
+          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[#abc7e5] bg-[#f0e8db] px-5 py-4 md:px-8">
             <div>
               <p className="text-sm text-slate-500">
                 Teacher workspace / {activeTab}
@@ -514,7 +514,7 @@ export default function Home() {
               </h1>
             </div>
             <div className="flex items-center gap-3">
-              <span className="rounded-full bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
+              <span className="rounded-full bg-[#dcece4] px-3 py-2 text-sm font-semibold text-[#2f7f6c]">
                 ● Teacher
               </span>
               <Link
@@ -542,7 +542,7 @@ export default function Home() {
               </div>
             )}
             {loading && (
-              <p role="status" className="text-sm text-slate-500">
+              <p role="status" className="text-sm text-slate-200">
                 Connecting to your classroom...
               </p>
             )}
@@ -603,11 +603,11 @@ export default function Home() {
                 <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
                   <label className="flex items-center gap-3 text-sm font-semibold text-slate-700">
                     Classroom
-                    <select
-                      value={classId}
-                      onChange={(event) => setClassId(event.target.value)}
-                      className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900"
-                    >
+                   <select
+  value={classId}
+  onChange={(event) => setClassId(event.target.value)}
+  className="min-w-0 rounded-md border border-[#b9a98b] bg-white px-3 py-2 text-sm font-medium text-[#134780]"
+>
                       {!classes.length && (
                         <option value="">No classes yet</option>
                       )}

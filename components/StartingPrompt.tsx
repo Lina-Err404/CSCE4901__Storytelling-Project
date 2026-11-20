@@ -8,15 +8,15 @@ const LABEL_STYLE: React.CSSProperties = {
   marginBottom: '8px', 
   fontWeight: 'bold', 
   fontSize: '15px', 
-  color: '#1e293b' 
+  color: '#134780' 
 };
 
 const INPUT_STYLE: React.CSSProperties = { 
   width: '100%', 
   padding: '14px', 
   borderRadius: '10px', 
-  border: '2px solid #e2e8f0', 
-  backgroundColor: '#f8fafc',
+  border: '1px solid #b9a98b', 
+  backgroundColor: '#ffffff',
   fontSize: '15px', 
   fontFamily: 'inherit',
   boxSizing: 'border-box' as const,
@@ -74,8 +74,8 @@ export default function StartingPrompt() {
   };
 
   return (
-    <div style={{ backgroundColor: '#ffffff', padding: '35px', borderRadius: '16px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)' }}>
-      <h3 style={{ marginTop: 0, marginBottom: '24px', fontSize: '20px', color: '#0f172a' }}>
+        <div className="rounded-xl border-[3px] border-[#f4b657] bg-[#f0e8db] p-5 shadow-lg sm:p-7">
+      <h3 style={{ marginTop: 0, marginBottom: '24px', fontSize: '20px', color: '#134780' }}>
         Assign Starting Prompt
       </h3>
       
@@ -121,7 +121,7 @@ export default function StartingPrompt() {
         style={{
           width: '100%',
           padding: '14px',
-          backgroundColor: isSubmitting ? '#9ca3af' : '#72a096', 
+          backgroundColor: isSubmitting ? '#9ca3af' : '#2f7f6c', 
           color: 'white',
           border: 'none',
           borderRadius: '10px',
