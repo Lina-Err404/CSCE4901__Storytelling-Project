@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { DrawingCanvas, DrawingSnapshot, setDrawingOwner } from "./drawingCanvas"
 
 const FLIP_MS = 1000
 const STRIPS = 12 // the turning page is built from strips so it can bend like paper
