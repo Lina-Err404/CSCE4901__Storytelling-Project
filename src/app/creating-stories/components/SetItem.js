@@ -224,12 +224,6 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
             name: names[id] ?? "A student",
             label: isMine ? "Your story" : `${names[id] ?? "A student"}’s story`,
             text: documentText(writingDocument),
-            writingDocument,
-            mine: isMine,
-            drawing: null, // this student's drawing for the left page, to be added later
-        }
-    })
-
     const drawing = useDrawingStatus(myIndex) // saved / error state of this student's drawing
     const savedDocument = stories[ownedStudentId]?.writingDocument ?? EMPTY_DOCUMENT
     const writingSaved = draft === null || JSON.stringify(draft) === JSON.stringify(savedDocument)
