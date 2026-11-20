@@ -183,7 +183,7 @@ function SegmentCard({
   return (
     <section className="grid gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
       <article className="min-w-0 rounded-xl border-[3px] border-[#7898bd] bg-[#f0e8db] p-5 text-[#134780] shadow-lg sm:p-6">
-        <div className="mt-4 whitespace-pre-wrap break-words border border-[#134780] bg-[#f5f2ec] p-5 leading-relaxed text-slate-900">
+              <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm font-semibold">
             {formatSection(segment.section) || `Part ${segment.order}`}
           </p>

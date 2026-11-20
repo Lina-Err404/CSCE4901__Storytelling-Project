@@ -165,16 +165,16 @@ export default function BreakoutManager({ lobby }: {lobby: Lobby}) {
         <main className="min-h-screen w-full bg-gradient-to-b from-[#0e102a] via-[#13204a] to-[#134790] p-4 sm:p-6">
             <div>{/* This div tag holds the go back button only.*/}
                  {/* Replace this href link with whatever page the teacher should return to.*/}
-                <Link className="font-bold"
+                <Link className="font-bold text-white hover:underline"
                  href="/"> {"←"} Return </Link>
             </div>
         <div className="min-h-[75vh] space-y-4 border-4 border-[#d5def0] p-5 text-center text-white sm:p-8">
             {/* This div tag holds the entire menu for separating the students into their groups.*/}
-            {error && <p className="text-[#581616]">{error}</p>}
+            {error && <p className="text-[#581616]">text-rose-300</p>}
             {saving && <p> saving...</p>}
             
             {tooSmall && rooms.length > 0 && (
-                <p className="text-[#004E68] ">Each room needs at least 2 students before saving.</p>
+                <p className="text-amber-200 ">Each room needs at least 2 students before saving.</p>
             )}
             
             <h1 className="text-lg font-bold">Assign Groups</h1>
@@ -261,7 +261,7 @@ export default function BreakoutManager({ lobby }: {lobby: Lobby}) {
                         {room.studentIds.map((id) => (
                             <li key={id}>
                                 {nameOf(id)}{" "}
-                                <select
+                                <select className="rounded bg-white text-slate-900"
                                 value={room.roomId}
                                 onChange={(e) => moveStudent(id, e.target.value)}
                                 disabled={saving}
