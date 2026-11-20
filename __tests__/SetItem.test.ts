@@ -27,6 +27,13 @@ jest.mock("@/src/utils/supabase", () => ({
   },
 }))
 
+jest.mock("../src/app/creating-stories/components/drawingCanvas", () => ({
+  setDrawingStory: jest.fn(),
+  loadDrawings: jest.fn(),
+  saveDrawing: jest.fn(async () => true),
+  useDrawingStatus: () => ({ saved: true, error: false }),
+}))
+
 jest.mock("../src/app/creating-stories/components/bookPage", () => {
   const React = jest.requireActual("react")
   return {
