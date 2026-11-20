@@ -177,11 +177,23 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
         void load()
         const channel = supabase
             .channel(`story-${storyId}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'story_segments', filter: `story_id=eq.${storyId}` }, load)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'story_segments', filter: `story_id=eq.${storyId}` }, () => { load(); loadDrawings() })
             .subscribe()
 
         return () => { supabase.removeChannel(channel) }
     }, [authLoading, session, storyId, studentsKey])
+
+    // listen to everyone's drawings too, same as the stories
+    useEffect(() => {
+        if (authLoading || !session) return
+        setDrawingStory(storyId, students, myIndex)
+        const channel = supabase
+            .channel(`drawings-${storyId}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'segment_drawings' }, () => loadDrawings())
+            .subscribe()
+
+        return () => { supabase.removeChannel(channel) }
+    }, [authLoading, session, storyId, studentsKey, myIndex])
 
     // get the display name of every student in the book
     useEffect(() => {
