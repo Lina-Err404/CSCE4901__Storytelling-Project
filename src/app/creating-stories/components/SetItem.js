@@ -254,7 +254,34 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
         } catch (reason) {
             console.error('Error saving story:', reason)
             setError(true)
+            return
         }
+        setStories((prev) => ({ ...prev, [studentId]: draft })) // keep the saved text showing
+        setDraft(null)
+        setError(false)
+    }
+
+    // creates this student's row if they haven't saved anything yet, so the drawing has somewhere to go
+    const makeSegment = async () => {
+        const { data, error: err } = await supabase
+            .from('story_segments')
+            .upsert(
+                { story_id: storyId, student_id: studentId, section, writing_content: stories[studentId] ?? "" },
+                { onConflict: 'story_id,section,section_order' }
+            )
+            .select('segment_id')
+            .single()
+        if (err) {
+            console.log('Error creating segment: ', err)
+            return null
+        }
+        return data.segment_id
+    }
+
+    // saves the writing and the drawing; one after the other so the row exists before the drawing needs it
+    const save = async () => {
+        await saveWriting()
+        if (myIndex >= 0) await saveDrawing(myIndex, makeSegment)
     }
 
     const makeSegment = async () => stories[ownedStudentId]?.segmentId ?? null
