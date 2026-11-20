@@ -194,17 +194,6 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
 
         return () => { supabase.removeChannel(channel) }
     }, [authLoading, session, storyId, studentsKey, myIndex])
-    // listen to everyone's drawings too, same as the stories
-    useEffect(() => {
-        if (authLoading || !session) return
-        setDrawingStory(storyId, students, myIndex)
-        const channel = supabase
-            .channel(`drawings-${storyId}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'segment_drawings' }, () => loadDrawings())
-            .subscribe()
-
-        return () => { supabase.removeChannel(channel) }
-    }, [authLoading, session, storyId, studentsKey, myIndex])
 
     // get the display name of every student in the book
     useEffect(() => {
@@ -241,10 +230,11 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
         }
     })
 
+    const drawing = useDrawingStatus(myIndex) // saved / error state of this student's drawing
     const savedDocument = stories[ownedStudentId]?.writingDocument ?? EMPTY_DOCUMENT
-    const saved = draft === null || JSON.stringify(draft) === JSON.stringify(savedDocument)
+    const writingSaved = draft === null || JSON.stringify(draft) === JSON.stringify(savedDocument)
 
-    const save = async () => {
+    const saveWriting = async () => {
         if (draft === null || !stories[ownedStudentId]) return
         const writingContent = documentText(draft)
         try {
@@ -265,6 +255,14 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
             console.error('Error saving story:', reason)
             setError(true)
         }
+    }
+
+    const makeSegment = async () => stories[ownedStudentId]?.segmentId ?? null
+
+    // saves the writing and the drawing; one after the other so the row exists before the drawing needs it
+    const save = async () => {
+        await saveWriting()
+        if (myIndex >= 0) await saveDrawing(myIndex, makeSegment)
     }
 
     // turning a page away from owned page saves it
@@ -299,6 +297,8 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
     }
     if (loading) return <p className="ml-10 text-neutral-500">Opening the book…</p>
 
+    const resolvedMyIndex = myIndex >= 0 ? myIndex : selectedIndex
+
     return (
         <div className="relative flex min-h-0 w-full flex-1 flex-col">
             <div className="flex shrink-0 items-center justify-end gap-3 px-6 py-1 text-sm">
@@ -311,14 +311,14 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
             <BookPage
                 pages={pages}
                 index={index}
-                myIndex={myIndex >= 0 ? myIndex : selectedIndex}
+                myIndex={resolvedMyIndex}
                 mode={mode}
                 onTurn={turn}
-                onJump={() => setIndex(myIndex)}
+                onJump={() => setIndex(resolvedMyIndex)}
                 onChangeDocument={setDraft}
                 onSave={save}
-                saved={saved}
-                error={error}
+                saved={writingSaved && drawing.saved}
+                error={error || drawing.error}
             />
         </div>
     )
