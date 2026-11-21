@@ -23,9 +23,9 @@ const { admin, db } = require('./firebase');
 const { createTimerRouter } = require('./timerRoutes');
 const { createRequireStudent, createRequireTeacher } = require('./auth');
 
-const { supabase } = require('./supabase');
+const { supabase, getSupabase } = require('./supabase');
 const {
-  createRequireStudent: createSupabaseRequireStudent,
+  createRequireSupabaseStudent,
   createRequireTeacher: createSupabaseRequireTeacher,
   createRequireUser: createSupabaseRequireUser,
 } = require('./supabaseAuth');
