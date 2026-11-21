@@ -1,11 +1,11 @@
 const { createClient } = require('@supabase/supabase-js');
 
 function getSupabase() {
-    if (!supabase) {
-        throw new Error("Missing supabase config");
-    }
+  if (!supabase) {
+    throw new Error('Missing Supabase config');
+  }
 
-    return supabase;
+  return supabase;
 }
 
 const supabaseUrl = process.env.SUPABASE_URL;

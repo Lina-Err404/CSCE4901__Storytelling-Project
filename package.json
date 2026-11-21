@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@firebase/firestore": "^4.19.0",
-    "@supabase/supabase-js": "^2.80.0",
+    "@supabase/supabase-js": "^2.119.0",
     "@tanstack/react-hotkeys": "^0.27.0",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.0",

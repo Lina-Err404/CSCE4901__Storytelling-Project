@@ -39,6 +39,8 @@ export default function JoinLobby({ players = [] }: { players?: Player[] }) {
       clearInterval(timer);
     };
   }, [router]);
+
+  return (
     <main className={styles.page}>
       {/* Background Content */}
       {/* Stars */}
