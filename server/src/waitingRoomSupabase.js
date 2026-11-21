@@ -1,13 +1,14 @@
 function createGetGroupForStudent(supabase) {
   return async function getGroupForStudent(studentId) {
     // Find the student's breakout room.
-    const { data: membership, error: membershipError } = await supabase
+    const { data: memberships, error: membershipError } = await supabase
       .from('breakout_participants')
       .select('lobby_id, room_id')
       .eq('student_id', studentId)
-      .maybeSingle();
+      .limit(1);
 
     if (membershipError) throw membershipError;
+    const membership = memberships?.[0] ?? null;
 
     // Student has not been assigned to a group yet.
     if (!membership) {
