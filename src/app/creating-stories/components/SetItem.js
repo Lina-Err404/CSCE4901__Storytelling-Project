@@ -17,20 +17,57 @@ function toWritingDocument(document, text = "") {
         : { version: 1, runs: text ? [{ text, marks: {} }] : [] }
 }
 
-async function storyApi(path, options = {}) {
+function createSessionExpiredError() {
+    const err = new Error("Your session expired. Please sign in again.")
+    err.code = "SESSION_EXPIRED"
+    return err
+}
+
+async function getFreshAccessToken(forceRefresh = false) {
     const { data: { session }, error } = await supabase.auth.getSession()
     if (error) throw error
     if (!session) throw new Error("Sign in with your Supabase account to load or save your story.")
-    const headers = new Headers(options.headers)
-    if (options.body && !headers.has("Content-Type")) {
-        headers.set("Content-Type", "application/json")
-    }
-    headers.set("Authorization", `Bearer ${session.access_token}`)
 
-    const response = await fetch(`/api${path}`, {
-        ...options,
-        headers,
-    })
+    const expiresSoon = Boolean(session.expires_at && session.expires_at * 1000 < Date.now() + 60_000)
+    if (forceRefresh || expiresSoon) {
+        const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession()
+        if (refreshError || !refreshed.session) {
+            await supabase.auth.signOut()
+            throw createSessionExpiredError()
+        }
+        return refreshed.session.access_token
+    }
+
+    return session.access_token
+}
+
+async function storyApi(path, options = {}) {
+    const send = async (token) => {
+        const headers = new Headers(options.headers)
+        if (options.body && !headers.has("Content-Type")) {
+            headers.set("Content-Type", "application/json")
+        }
+        headers.set("Authorization", `Bearer ${token}`)
+
+        return fetch(`/api${path}`, {
+            ...options,
+            headers,
+        })
+    }
+
+    let token = await getFreshAccessToken(false)
+    let response = await send(token)
+
+    // If the backend rejects a stale token, refresh once and retry.
+    if (response.status === 401) {
+        token = await getFreshAccessToken(true)
+        response = await send(token)
+        if (response.status === 401) {
+            await supabase.auth.signOut()
+            throw createSessionExpiredError()
+        }
+    }
+
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(payload.error || `Story request failed (${response.status})`)
     return payload
@@ -41,6 +78,10 @@ function StorySignIn({ initialError, onSignedIn }) {
     const [password, setPassword] = useState("")
     const [error, setError] = useState(initialError ?? "")
     const [submitting, setSubmitting] = useState(false)
+
+    useEffect(() => {
+        if (initialError) setError(initialError)
+    }, [initialError])
 
     const signIn = async (event) => {
         event.preventDefault()
@@ -168,6 +209,10 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
                 if (assignedIndex >= 0) setIndex(assignedIndex)
                 setError(false)
             } catch (reason) {
+                if (reason?.code === "SESSION_EXPIRED") {
+                    setAuthError(reason.message)
+                    return
+                }
                 console.error('Error reading stories:', reason)
                 setError(true)
             } finally {
@@ -222,6 +267,7 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
         const isMine = Boolean(stories[id]?.assignedToYou)
         return {
             id,
+            segmentId: stories[id]?.segmentId ?? null,
             name: names[id] ?? "A student",
             label: isMine ? "Your story" : `${names[id] ?? "A student"}’s story`,
             text: documentText(writingDocument),
@@ -252,36 +298,14 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
             setDraft(null)
             setError(false)
         } catch (reason) {
+            if (reason?.code === "SESSION_EXPIRED") {
+                setAuthError(reason.message)
+                return
+            }
             console.error('Error saving story:', reason)
             setError(true)
             return
         }
-        setStories((prev) => ({ ...prev, [studentId]: draft })) // keep the saved text showing
-        setDraft(null)
-        setError(false)
-    }
-
-    // creates this student's row if they haven't saved anything yet, so the drawing has somewhere to go
-    const makeSegment = async () => {
-        const { data, error: err } = await supabase
-            .from('story_segments')
-            .upsert(
-                { story_id: storyId, student_id: studentId, section, writing_content: stories[studentId] ?? "" },
-                { onConflict: 'story_id,section,section_order' }
-            )
-            .select('segment_id')
-            .single()
-        if (err) {
-            console.log('Error creating segment: ', err)
-            return null
-        }
-        return data.segment_id
-    }
-
-    // saves the writing and the drawing; one after the other so the row exists before the drawing needs it
-    const save = async () => {
-        await saveWriting()
-        if (myIndex >= 0) await saveDrawing(myIndex, makeSegment)
     }
 
     const makeSegment = async () => stories[ownedStudentId]?.segmentId ?? null
@@ -339,6 +363,7 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
                 pages={pages}
                 index={index}
                 myIndex={resolvedMyIndex}
+                studentId={session.user.id}
                 mode={mode}
                 onTurn={turn}
                 onJump={() => setIndex(resolvedMyIndex)}

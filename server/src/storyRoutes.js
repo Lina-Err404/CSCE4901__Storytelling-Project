@@ -106,12 +106,6 @@ async function getOwnedSegment(supabase, segmentId, studentId) {
 }
 
 function validDrawingData(drawingData) {
-  if (
-    !drawingData ||
-    typeof drawingData !== 'object' ||
-    Array.isArray(drawingData) ||
-    drawingData.version !== 1 ||
-function validDrawingData(drawingData) {
   if (!drawingData || typeof drawingData !== 'object' || Array.isArray(drawingData)) {
     return false;
   }
@@ -133,6 +127,12 @@ function validDrawingData(drawingData) {
 
   return Buffer.byteLength(JSON.stringify(drawingData), 'utf8') <= MAX_DRAWING_BYTES;
 }
+
+function textFromWritingDocument(writingDocument) {
+  return writingDocument.runs.map(({ text }) => text).join('');
+}
+
+function plainWritingDocument(text) {
   return {
     version: 1,
     runs: text ? [{ text, marks: {} }] : [],
