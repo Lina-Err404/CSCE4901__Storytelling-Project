@@ -181,10 +181,22 @@ if (supabase) {
       getGroupForStudent,
     })
   );
-} else {
+
+  app.use(
+    createStoryRouter({
+      requireSupabaseStudent: requireStoryStudent,
+      getSupabase,
+    })
+  );
+} else { 
   app.use('/supabase', (req, res) =>
     res.status(503).json({
       error: 'Supabase lobby features are not configured',
+    })
+  );
+app.use(['/stories', '/story-segments'], (req, res) =>
+  res.status(503).json({
+    error: 'Supabase story features are not configured',
     })
   );
 }
@@ -202,7 +214,7 @@ app.use((error, req, res, next) => {
   if (res.headersSent) {
     return next(error);
   }
-
+  console.error'API request failed:', error);
   return res.status(500).json({
     error: 'Internal server error',
   });
