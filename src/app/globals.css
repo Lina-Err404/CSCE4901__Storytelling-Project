@@ -1064,3 +1064,9 @@ html:has(.auth-page-interior) {
     transform: none;
   }
 }
+
+@font-face {
+  font-family: "Gnomon";
+  src: url("/assets/fonts/Gnomon-Simple.ttf");
+  font-display: swap;
+}

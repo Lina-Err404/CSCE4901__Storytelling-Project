@@ -7,6 +7,7 @@ if (
 ) {
   process.env.FIRESTORE_EMULATOR_HOST ||= '127.0.0.1:8080';
 }
+
 if (
   process.env.NODE_ENV !== 'production' &&
   process.env.USE_AUTH_EMULATOR !== 'false'
@@ -17,6 +18,7 @@ if (
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+
 const { admin, db } = require('./firebase');
 const { createTimerRouter } = require('./timerRoutes');
 const { createRequireStudent, createRequireTeacher } = require('./auth');
@@ -26,9 +28,19 @@ const {
   createRequireTeacher: createSupabaseRequireTeacher,
   createRequireUser: createSupabaseRequireUser,
 } = require('./supabaseAuth');
-const { createClassesRouter: createSupabaseClassesRouter } = require('./supabaseClasses');
-const { createLobbyRouter: createSupabaseLobbyRouter } = require('./supabaseLobby');
-const { createSocketAuth: createSupabaseSocketAuth } = require('./supabaseSocketAuth');
+
+const {
+  createClassesRouter: createSupabaseClassesRouter,
+} = require('./supabaseClasses');
+
+const {
+  createLobbyRouter: createSupabaseLobbyRouter,
+} = require('./supabaseLobby');
+
+const {
+  createSocketAuth: createSupabaseSocketAuth,
+} = require('./supabaseSocketAuth');
+
 const {
   createClassesRouter,
   createLobbyRouter,
@@ -36,87 +48,214 @@ const {
   createStoryRouter,
 } = require('./');
 
+const {
+  createBreakoutRoomRoutes,
+} = require('./breakoutRoomRoutes');
+
+const {
+  createWaitingRoomRoutes,
+} = require('./waitingRoomRoutes');
+
+const {
+  createGetGroupForStudent,
+} = require('./waitingRoomSupabase');
+
 const port = Number(process.env.PORT || 4000);
 
 const requireTeacher = createRequireTeacher(admin);
 const requireStudent = createRequireStudent(admin);
-const supabaseRequireTeacher = supabase && createSupabaseRequireTeacher(supabase);
-const requireStoryStudent = supabase && createRequireSupabaseStudent(supabase);
+
+const supabaseRequireTeacher =
+  supabase && createSupabaseRequireTeacher(supabase);
+
+const requireStoryStudent =
+  supabase && createRequireSupabaseStudent(supabase);
+
 const supabaseRequireStudent = requireStoryStudent;
-const supabaseRequireUser = supabase && createSupabaseRequireUser(supabase);
+
+const supabaseRequireUser =
+  supabase && createSupabaseRequireUser(supabase);
+
 const app = express();
 const server = http.createServer(app);
+
 let io;
 let supabaseIo;
 
 app.use(express.json());
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
-app.use(createClassesRouter({ db, admin, requireTeacher, getIo: () => io }));
-app.use(createLobbyRouter({
-  db,
-  admin,
-  requireTeacher,
-  requireStudent,
-  jwtSecret: process.env.JWT_SECRET,
-  getIo: () => io,
-}));
 
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
 
-// R5: Time Limit routes
-app.use(createTimerRouter({
-  getIo: () => supabaseIo
-}));
+/*
+ * Legacy Firebase routes
+ */
+app.use(
+  createClassesRouter({
+    db,
+    admin,
+    requireTeacher,
+    getIo: () => io,
+  })
+);
 
-
-if (supabase) {
-  app.get('/supabase/profile', supabaseRequireUser, (req, res) => res.json({
-    id: req.user.uid,
-    role: req.user.role,
-    displayName: req.user.displayName,
-  }));
-  app.use('/supabase', createSupabaseClassesRouter({
-    supabase,
-    requireTeacher: supabaseRequireTeacher,
-    getIo: () => supabaseIo,
-  }));
-  app.use('/supabase', createSupabaseLobbyRouter({
-    supabase,
-    requireTeacher: supabaseRequireTeacher,
-    requireStudent: supabaseRequireStudent,
+app.use(
+  createLobbyRouter({
+    db,
+    admin,
+    requireTeacher,
+    requireStudent,
     jwtSecret: process.env.JWT_SECRET,
+    getIo: () => io,
+  })
+);
+
+/*
+ * R5: Time Limit routes
+ */
+app.use(
+  createTimerRouter({
     getIo: () => supabaseIo,
-  }));
-  app.use(createStoryRouter({
-    requireSupabaseStudent: requireStoryStudent,
-    getSupabase,
-  }));
+  })
+);
+
+/*
+ * Supabase routes
+ */
+if (supabase) {
+  app.get(
+    '/supabase/profile',
+    supabaseRequireUser,
+    (req, res) => {
+      res.json({
+        id: req.user.uid,
+        role: req.user.role,
+        displayName: req.user.displayName,
+      });
+    }
+  );
+
+  app.use(
+    '/supabase',
+    createSupabaseClassesRouter({
+      supabase,
+      requireTeacher: supabaseRequireTeacher,
+      getIo: () => supabaseIo,
+    })
+  );
+
+  app.use(
+    '/supabase',
+    createSupabaseLobbyRouter({
+      supabase,
+      requireTeacher: supabaseRequireTeacher,
+      requireStudent: supabaseRequireStudent,
+      jwtSecret: process.env.JWT_SECRET,
+      getIo: () => supabaseIo,
+    })
+  );
+
+  /*
+   * R9/R20: Breakout Room persistence
+   */
+  app.use(
+    '/supabase',
+    createBreakoutRoomRoutes({
+      supabase,
+      requireTeacher: supabaseRequireTeacher,
+    })
+  );
+
+  /*
+   * R40: Student Waiting Room
+   */
+  const getGroupForStudent =
+    createGetGroupForStudent(supabase);
+
+  app.use(
+    '/supabase',
+    createWaitingRoomRoutes({
+      requireStudent: supabaseRequireStudent,
+      getGroupForStudent,
+    })
+  );
+
+  app.use(
+    createStoryRouter({
+      requireSupabaseStudent: requireStoryStudent,
+      getSupabase,
+    })
+  );
 } else {
-  app.use('/supabase', (req, res) => res.status(503).json({
-    error: 'Supabase lobby features are not configured',
-  }));
-  app.use(['/stories', '/story-segments'], (req, res) => res.status(503).json({
-    error: 'Supabase story features are not configured',
-  }));
+  app.use('/supabase', (req, res) =>
+    res.status(503).json({
+      error: 'Supabase lobby features are not configured',
+    })
+  );
+  app.use(['/stories', '/story-segments'], (req, res) =>
+    res.status(503).json({
+      error: 'Supabase story features are not configured',
+    })
+  );
 }
 
-app.use((req, res) => res.status(404).json({ error: 'Not found' }));
+/*
+ * 404 + error handling
+ */
+app.use((req, res) =>
+  res.status(404).json({
+    error: 'Not found',
+  })
+);
+
 app.use((error, req, res, next) => {
-  if (res.headersSent) return next(error);
+  if (res.headersSent) {
+    return next(error);
+  }
   console.error('API request failed:', error);
-  return res.status(500).json({ error: 'Internal server error' });
+  return res.status(500).json({
+    error: 'Internal server error',
+  });
 });
 
+/*
+ * Socket.IO
+ */
 io = new Server(server, {
-  cors: { origin: process.env.WEB_ORIGIN || 'http://localhost:3000' },
+  cors: {
+    origin: process.env.WEB_ORIGIN || 'http://localhost:3000',
+  },
 });
-io.use(createSocketAuth({ db, jwtSecret: process.env.JWT_SECRET }));
+
+io.use(
+  createSocketAuth({
+    db,
+    jwtSecret: process.env.JWT_SECRET,
+  })
+);
+
 supabaseIo = io.of('/supabase');
+
 if (supabase) {
-  supabaseIo.use(createSupabaseSocketAuth({ supabase, jwtSecret: process.env.JWT_SECRET }));
+  supabaseIo.use(
+    createSupabaseSocketAuth({
+      supabase,
+      jwtSecret: process.env.JWT_SECRET,
+    })
+  );
 } else {
-  supabaseIo.use((socket, next) => next(new Error('Supabase lobby features are not configured')));
+  supabaseIo.use((socket, next) =>
+    next(
+      new Error(
+        'Supabase lobby features are not configured'
+      )
+    )
+  );
 }
 
 server.listen(port, '0.0.0.0', () => {
-  console.log(`Storytelling API and Socket.IO listening on http://localhost:${port}`);
+  console.log(
+    `Storytelling API and Socket.IO listening on http://localhost:${port}`
+  );
 });
