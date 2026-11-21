@@ -222,7 +222,7 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
         const isMine = Boolean(stories[id]?.assignedToYou)
         return {
             id,
-            segmentId: stories[id]?.segmentId ?? `${storyId}-${id}`,
+            segmentId: stories[id]?.segmentId ?? null,
             name: names[id] ?? "A student",
             label: isMine ? "Your story" : `${names[id] ?? "A student"}’s story`,
             text: documentText(writingDocument),

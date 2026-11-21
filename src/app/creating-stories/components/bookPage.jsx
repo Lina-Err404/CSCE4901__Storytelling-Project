@@ -285,16 +285,16 @@ function PageBody({ side, page, number, editable, studentId, onChangeDocument, o
             )}
 
             {/* R6 / R7: Peer Reactions bar */}
-            {studentId && (
-                <div className="absolute left-0 right-0 z-20 flex justify-center" style={{ bottom: "7.5%" }}>
-                    <PeerReactions
-                        key={`${page.segmentId}-${studentId}`}
-                        segmentId={page.segmentId}
-                        currentUserId={studentId}
-                        readOnly={page.mine}
-                    />
-                </div>
-            )}
+{studentId && page.segmentId && (
+    <div className="absolute left-0 right-0 z-20 flex justify-center" style={{ bottom: "7.5%" }}>
+        <PeerReactions
+            key={`${page.segmentId}-${studentId}`}
+            segmentId={page.segmentId}
+            currentUserId={studentId}
+            readOnly={page.mine}
+        />
+    </div>
+)}
 
             <span className="absolute left-0 right-0 text-center text-[#b4b6c2]" style={{ bottom: "3.5%", fontSize: SMALL_SIZE }}>
                 {number}
