@@ -265,7 +265,12 @@ export default function Home() {
         setTimeLimitMinutes(timer.timeLimitMinutes || 20);
         setTimerStarted(Boolean(timer.timerStartedAt));
         setRemainingSeconds(
-          timer.remainingSeconds === null ? null : Math.max(0, timer.remainingSeconds),
+          typeof timer.remainingSeconds === "number" &&
+            Number.isFinite(timer.remainingSeconds)
+            ? Math.max(0, timer.remainingSeconds)
+            : timer.timerStartedAt
+              ? (timer.timeLimitMinutes || 20) * 60
+              : null,
         );
       })
       .catch(() => {
@@ -331,9 +336,10 @@ export default function Home() {
       );
       setTimerStarted(true);
       setRemainingSeconds(
-        timer.remainingSeconds === null
-          ? timeLimitMinutes * 60
-          : Math.max(0, timer.remainingSeconds),
+        typeof timer.remainingSeconds === "number" &&
+          Number.isFinite(timer.remainingSeconds)
+          ? Math.max(0, timer.remainingSeconds)
+          : timeLimitMinutes * 60,
       );
 
       // Lock the lobby only after the timer has successfully started.
