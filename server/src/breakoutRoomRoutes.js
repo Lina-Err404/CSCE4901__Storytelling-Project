@@ -146,11 +146,12 @@ function createBreakoutRoomRoutes({ supabase, requireTeacher }) {
           for (const studentId of room.studentIds) {
             if (
               typeof studentId !== 'string' ||
+              !UUID_PATTERN.test(studentId) ||
               seenStudents.has(studentId)
             ) {
               return res.status(400).json({
                 error:
-                  'Students may only be assigned to one room',
+                  'Students may only be assigned to one room with a valid UUID',
               });
             }
 
