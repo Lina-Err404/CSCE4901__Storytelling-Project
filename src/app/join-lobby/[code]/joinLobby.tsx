@@ -1,3 +1,8 @@
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "../../supabase-lobbies/supabase-client";
 import styles from "./joinLobby.module.css";
 
 const SLOT_COUNT = 5;
@@ -5,7 +10,35 @@ const SLOT_COUNT = 5;
 type Player = { id: string; name: string; icon: string }; // can pass real players in later
 
 export default function JoinLobby({ players = [] }: { players?: Player[] }) {
-  return (
+  const router = useRouter();
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function checkAssignment() {
+      if (!supabase) return;
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) return;
+
+      const res = await fetch("/api/supabase/waiting-room", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+
+      const payload = await res.json();
+      if (!cancelled && payload.assigned && payload.groupId) {
+        router.replace(`/waiting-room/${encodeURIComponent(payload.groupId)}`);
+      }
+    }
+
+    void checkAssignment();
+    const timer = setInterval(() => void checkAssignment(), 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [router]);
     <main className={styles.page}>
       {/* Background Content */}
       {/* Stars */}
