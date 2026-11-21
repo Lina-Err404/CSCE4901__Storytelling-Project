@@ -216,22 +216,34 @@ export default function BreakoutManager({ lobby }: { lobby: Lobby }) {
     (room) => room.studentIds.length < 2
   );
 
-  // Randomly assign students into balanced rooms.
+  // Randomly assign students into balanced rooms with valid UUID roomIds.
   const handleRandomlyAssignStudents = () => {
-    try {
-      const next = randomlyAssignStudents(
-        lobby.students,
-        roomCount
-      );
+    const studentIds = lobby.students.map((student) => student.id);
+    const count = rooms.length || roomCount;
 
-      updateRooms(next);
-    } catch (e) {
-      setError(
-        e instanceof Error
-          ? e.message
-          : "Could not randomly assign students."
-      );
+    if (count < 1 || studentIds.length < count * 2) {
+      setError("You need at least two students per room.");
+      return;
     }
+
+    for (let index = studentIds.length - 1; index > 0; index--) {
+      const other = Math.floor(Math.random() * (index + 1));
+      [studentIds[index], studentIds[other]] = [
+        studentIds[other],
+        studentIds[index],
+      ];
+    }
+
+    const nextRooms = Array.from({ length: count }, (_, index) => ({
+      roomId: rooms[index]?.roomId ?? crypto.randomUUID(),
+      roomName: rooms[index]?.roomName ?? `Room ${index + 1}`,
+      studentIds: studentIds.filter(
+        (_, studentIndex) => studentIndex % count === index
+      ),
+    }));
+
+    setError(null);
+    updateRooms(nextRooms);
   };
 
   if (loading) {
