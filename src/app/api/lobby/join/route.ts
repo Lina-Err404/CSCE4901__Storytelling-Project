@@ -1,7 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "../src/app/Login_Signup_Backend/supabase-client";
-import { supabaseConfigurationMissing } from "./Login_Signup_Backend/supabase-client";
+import {
+  supabase,
+  supabaseConfigurationMissing,
+} from "@/src/app/Login_Signup_Backend/supabase-client";
 
 const db = supabase;
 
