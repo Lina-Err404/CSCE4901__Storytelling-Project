@@ -311,7 +311,7 @@
   left: -2.4cqw;
   bottom: calc(var(--u) * -18);
   width: 104.9cqw;
-  height: calc(var(--u) * -326);
+  height: auto;
   max-width: none;
   pointer-events: none;
   user-select: none; 
