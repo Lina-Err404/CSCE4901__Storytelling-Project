@@ -35,6 +35,35 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   return payload as T;
 }
 
+// Timer routes are mounted directly under /api (not /api/supabase).
+async function timerApi<T>(path: string, options: RequestInit = {}): Promise<T> {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  const accessToken = data.session?.access_token;
+  if (!accessToken) throw new Error("Sign in is required.");
+
+  const headers = new Headers(options.headers);
+  headers.set("Authorization", `Bearer ${accessToken}`);
+  if (options.body) headers.set("Content-Type", "application/json");
+
+  const response = await fetch("/api" + path, { ...options, headers });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || `Timer request failed (${response.status})`);
+  }
+  return payload as T;
+}
+
+type LobbyTimer = {
+  lobbyId: string;
+  timeLimitMinutes: number;
+  timerStartedAt: string | null;
+  timerEndsAt: string | null;
+  remainingSeconds: number | null;
+  expired: boolean;
+};
+
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [userRole, setUserRole] = useState<"teacher" | null>(null);
@@ -54,6 +83,9 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [timeLimitMinutes, setTimeLimitMinutes] = useState(20);
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
+  const [timerStarted, setTimerStarted] = useState(false);
   const isTeacher = userRole === "teacher";
 
   const lobbyCode = lobby?.joinCode || "------";
@@ -218,6 +250,47 @@ export default function Home() {
     return () => window.clearInterval(timer);
   }, [lobby]);
 
+  // Load the persisted timer when a lobby is selected, then keep a local countdown.
+  useEffect(() => {
+    if (!lobby) {
+      setTimerStarted(false);
+      setRemainingSeconds(null);
+      return;
+    }
+
+    let cancelled = false;
+    timerApi<LobbyTimer>(`/lobbies/${lobby.lobbyId}/timer`)
+      .then((timer) => {
+        if (cancelled) return;
+        setTimeLimitMinutes(timer.timeLimitMinutes || 20);
+        setTimerStarted(Boolean(timer.timerStartedAt));
+        setRemainingSeconds(
+          timer.remainingSeconds === null ? null : Math.max(0, timer.remainingSeconds),
+        );
+      })
+      .catch(() => {
+        // A lobby without a configured timer is expected before the teacher starts it.
+        if (!cancelled) {
+          setTimerStarted(false);
+          setRemainingSeconds(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [lobby?.lobbyId]);
+
+  useEffect(() => {
+    if (!timerStarted || remainingSeconds === null || remainingSeconds <= 0) return;
+    const interval = window.setInterval(() => {
+      setRemainingSeconds((current) =>
+        current === null ? null : Math.max(0, current - 1),
+      );
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [timerStarted, remainingSeconds]);
+
   async function createLobby() {
     if (!classId || busy) return;
     setBusy(true);
@@ -242,10 +315,28 @@ export default function Home() {
   }
 
   async function startSession() {
-    if (!lobby || busy) return;
+    if (!lobby || busy || started) return;
     setBusy(true);
     setError("");
     try {
+      // Configure and start the timer while the database lobby is still waiting.
+      await timerApi(`/lobbies/${lobby.lobbyId}/timer`, {
+        method: "PATCH",
+        body: JSON.stringify({ minutes: timeLimitMinutes }),
+      });
+
+      const timer = await timerApi<LobbyTimer>(
+        `/lobbies/${lobby.lobbyId}/timer/start`,
+        { method: "POST" },
+      );
+      setTimerStarted(true);
+      setRemainingSeconds(
+        timer.remainingSeconds === null
+          ? timeLimitMinutes * 60
+          : Math.max(0, timer.remainingSeconds),
+      );
+
+      // Lock the lobby only after the timer has successfully started.
       await api(`/lobbies/${lobby.lobbyId}`, {
         method: "PATCH",
         body: JSON.stringify({ status: "locked" }),
@@ -253,7 +344,9 @@ export default function Home() {
       setLobby({ ...lobby, status: "locked" });
     } catch (reason) {
       setError(
-        reason instanceof Error ? reason.message : "Could not start the session.",
+        reason instanceof Error
+          ? reason.message
+          : "Could not start the timed session.",
       );
     } finally {
       setBusy(false);
@@ -769,7 +862,34 @@ export default function Home() {
                       Start when your class is ready.
                     </p>
                   </div>
-                  <button
+                  <div className="flex flex-col gap-2 sm:items-end">
+                    <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                      Time limit
+                      <input
+                        type="number"
+                        min={1}
+                        max={180}
+                        step={1}
+                        value={timeLimitMinutes}
+                        onChange={(event) =>
+                          setTimeLimitMinutes(
+                            Math.min(180, Math.max(1, Number(event.target.value) || 1)),
+                          )
+                        }
+                        disabled={started || timerStarted || busy || !lobby}
+                        className="w-20 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                        aria-label="Session time limit in minutes"
+                      />
+                      minutes
+                    </label>
+                    {timerStarted && remainingSeconds !== null && (
+                      <p className="text-sm font-semibold text-indigo-700" role="timer">
+                        Time remaining: {Math.floor(remainingSeconds / 60)}:
+                        {String(remainingSeconds % 60).padStart(2, "0")}
+                        {remainingSeconds === 0 ? " — Time is up" : ""}
+                      </p>
+                    )}
+                    <button
                     onClick={startSession}
                     disabled={started || busy || !lobby}
                     className="rounded-xl bg-indigo-600 px-6 py-3 font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-400"
@@ -777,9 +897,10 @@ export default function Home() {
                     {started
                       ? "Session started"
                       : lobby
-                        ? "Start story session"
+                        ? "Start timed story session"
                         : "Create a lobby first"}
-                  </button>
+                    </button>
+                  </div>
                 </div>
               </>
             )}
