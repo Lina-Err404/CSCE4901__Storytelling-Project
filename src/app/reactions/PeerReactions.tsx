@@ -143,50 +143,59 @@ export default function PeerReactions({
     setPickerOpen(false);
   }, [currentUserId]);
 
-  const fetchBackendReactions = useCallback(async () => {
-    if (!segmentId) return;
-    try {
-      const { token, uid } = await getSupabaseAuth();
-      if (!token) {
-        console.warn("[PeerReactions] No Supabase session token; sign in as a student to load reactions.");
-        return;
-      }
-
-      const res = await fetch(
-        `/api/reactions?segmentId=${encodeURIComponent(segmentId)}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      if (!res.ok) {
-        console.error("[PeerReactions] GET /api/reactions failed:", res.status, await res.text());
-        return;
-      }
-
-      const data = await res.json();
-      setCounts(data.counts || {});
-      const activeStudentId = uid || currentUserId;
-      const mine = data.reactions?.find(
-        (r: { student_id: string; reaction_type: string }) =>
-          r.student_id === activeStudentId
-      );
-      setUserReacted(mine ? mine.reaction_type : null);
-    } catch (err) {
-      console.error("[PeerReactions] GET /api/reactions error:", err);
+const fetchBackendReactions = useCallback(async (): Promise<boolean> => {
+  if (!segmentId) return false;
+  try {
+    const { token, uid } = await getSupabaseAuth();
+    if (!token) {
+      console.warn("[PeerReactions] No Supabase session token; sign in as a student to load reactions.");
+      return false;
     }
-  }, [segmentId, currentUserId]);
+
+    const res = await fetch(
+      `/api/reactions?segmentId=${encodeURIComponent(segmentId)}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+
+    if (!res.ok) {
+      console.error("[PeerReactions] GET /api/reactions failed:", res.status, await res.text());
+      return false;
+    }
+
+    const data = await res.json();
+    setCounts(data.counts || {});
+    const activeStudentId = uid || currentUserId;
+    const mine = data.reactions?.find(
+      (r: { student_id: string; reaction_type: string }) =>
+        r.student_id === activeStudentId
+    );
+    setUserReacted(mine ? mine.reaction_type : null);
+    return true;
+  } catch (err) {
+    console.error("[PeerReactions] GET /api/reactions error:", err);
+    return false;
+  }
+}, [segmentId, currentUserId]);
 
   // load reactions for this specific segmentId (R7: View Reactions)
   useEffect(() => {
     if (!segmentId) return;
 
     if (USE_BACKEND_API) {
-      fetchBackendReactions();
-      return;
+  let interval: ReturnType<typeof setInterval> | null = null;
+  let cancelled = false;
+
+  fetchBackendReactions().then((ok) => {
+    if (ok && !cancelled) {
+      interval = setInterval(fetchBackendReactions, 5000);
     }
+  });
+
+  return () => {
+    cancelled = true;
+    if (interval) clearInterval(interval);
+  };
+}
 
     const loadFromLocal = () => {
       const all = readAllSegmentReactions();
