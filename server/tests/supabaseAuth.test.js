@@ -1,6 +1,7 @@
 const express = require('express');
 const request = require('supertest');
 const {
+  createRequireSupabaseStudent,
   createRequireStudent,
   createRequireTeacher,
   createRequireUser,
@@ -99,6 +100,18 @@ describe('Supabase authentication middleware', () => {
       },
       { onConflict: 'id', ignoreDuplicates: true },
     );
+  });
+
+  test('creates a Supabase student middleware for story routes', async () => {
+    const supabase = createSupabase({
+      profile: { role: 'student', display_name: 'Student' },
+    });
+    const response = await request(createApp(createRequireSupabaseStudent(supabase)))
+      .get('/identity')
+      .set('Authorization', 'Bearer student-token');
+
+    expect(response.status).toBe(200);
+    expect(response.body.user.role).toBe('student');
   });
 
   test('the general profile route permits both valid roles', async () => {

@@ -1,0 +1,238 @@
+/* Page Layout */
+
+.page {
+  /* Page Gradient / Colors */
+  --imperial-blue: #1C2A6F;
+  --true-cobalt: #14317E;
+  --ocean-blue: #2888C0;
+
+  /* Text colors */
+  --parchment: #F7F3EC;
+  --lavender: #CCDBF3;
+
+  /* Icon colors */
+  --royal-blue: #5B77D7;
+  --ocean-twilight: #2F47B2;
+  --golden-pollen: #FFC647;
+  --pearl-aqua: #76DEE1;
+
+
+  /*--cream: #f7f1e6;
+  --ice: #b8cff4;
+  --gold: #f6c85a;
+  --indigo: #3a3fa8;*/
+
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: linear-gradient(0deg, var(--ocean-blue) 0%, var(--true-cobalt) 100%);
+}
+
+/* Wave Corners */
+.wave {
+  position: absolute;
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+  z-index: 1;
+}
+
+.waveTL { 
+    top: 0; 
+    left: 0; 
+    width: 52.6vw; 
+}
+
+.waveBR {
+  bottom: 0; 
+  right: 0; 
+  width: 55.3vw;
+}
+
+.content {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: 8vh;
+}
+
+/* Stars BG */
+.stars {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  user-select: none;
+  z-index: 0;
+}
+
+.sparkle {
+  position: relative;
+  width: clamp(110px, min(15.5vw, 24vh), 260px);
+  aspect-ratio: 1;
+  margin-bottom: 2.25rem;
+}
+
+/* Ring, outer & inner sparkle */
+.layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  user-select: none;
+}
+
+.outer, .inner {
+  inset: auto;
+  top: 50%;
+  left: 50%;
+  height: auto;
+  translate: -50% -50%;
+}
+
+.outer {
+  width: 63%;
+  filter: drop-shadow(0 0 16px rgba(255, 205, 100, 0.65)); 
+}
+
+.inner {
+  width: 36%;
+  top: 51.2%;  /* move pale star down to line up with the gold star */
+  left: 48.9%; /* move pale star left to line up with the gold star */
+}
+
+.small {
+  position: absolute;
+  top: -1.5%;
+  left: 72%;
+  width: 24%;
+  height: auto;
+}
+
+/* Heading and subheading */
+.title, .subtitle {
+  margin: 0;
+  font-family: "Gnomon", system-ui, sans-serif;
+  font-weight: 400;
+  font-synthesis: none; /* stops the browser faking bold or italic */
+  letter-spacing: 0;
+  text-align: center;
+  line-height: 1.1;
+}
+
+.title {
+  font-size: clamp(2rem, min(4.7vw, 7.2vh), 5rem);
+  color: var(--parchment);
+}
+
+.subtitle {
+  margin-top: 0.1em;
+  font-size: clamp(1.5rem, min(3.5vw, 5.4vh), 3.75rem);
+  color: var(--lavender);
+}
+
+
+/* Player slots */
+
+.slots {
+  display: flex;
+  gap: min(4.5vw, 6.8vh);
+  margin: min(3.7vw, 5.6vh) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.slot {
+  width: min(9.3vw, 14vh);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--parchment);
+  border: 4px solid var(--ocean-twilight);
+  overflow: hidden; /* clips a player's icon to the circle */
+}
+
+/*.slotNext {
+  border-color: var(--imperial-blue);
+}
+
+.slotYou {
+  border-color: transparent;
+  background: 
+    linear-gradient(var(--parchment), var(--parchment)) padding-box,
+    linear-gradient(135deg, var(--golden-pollen), var(--pearl-aqua) border-box);
+}*/
+
+.slotIcon {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+
+
+/* Animations */
+.ring, .outer, .inner {
+  animation: pulse 4s ease-in-out infinite;
+}
+
+.ring { --pulse: 1.04; }
+.outer {--pulse: 1.06; }
+.inner { --pulse: 1.06; }
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(var(--pulse)); }
+}
+
+.small { animation: twinkle 4s ease-in-out infinite; }
+
+@keyframes twinkle {
+  0%, 100% { transform: scale(0.85)    rotate(0deg);  opacity: 0.6; }
+  50%      { transform: scale(1.15)  rotate(20deg); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ring, .outer, .inner, .small { animation: none; }
+}
+
+/* Waves slide in from their corners */
+.waveTL { animation: wave-tl 900ms cubic-bezier(.2,.7,.2,1) both; }
+.waveBR { animation: wave-br 900ms cubic-bezier(.2,.7,.2,1) both; }
+@keyframes wave-tl { from { opacity: 0; transform: translate(-6%, -6%); } }
+@keyframes wave-br { from { opacity: 0; transform: translate(6%, 6%); } }
+
+/* Stars fade in */
+.stars { animation: fade 1200ms ease-out 200ms both; }
+@keyframes fade { from { opacity: 0; } }
+
+
+/* Sparkle cluster grows in, then the pulse takes over */
+.sparkle { animation: sparkle-in 800ms cubic-bezier(.2,.8,.2,1) 300ms both; }
+@keyframes sparkle-in { from { opacity: 0; transform: scale(0.7); } }
+
+/* Text rises into place */
+.title    { animation: rise 600ms ease-out 650ms both; }
+.subtitle { animation: rise 600ms ease-out 800ms both; }
+@keyframes rise { from { opacity: 0; transform: translateY(0.6em); } }
+
+/* Slots pop in one after another */
+.slot { animation: pop 500ms cubic-bezier(.3,1.4,.5,1) calc(950ms + var(--i) * 90ms) both; }
+@keyframes pop { from { opacity: 0; transform: scale(0.6); } }
+
+/* A player's icon pops in when they join (plays on mount) */
+.slotIcon { animation: join 450ms cubic-bezier(.3,1.5,.5,1) both; }
+@keyframes join { from { opacity: 0; transform: scale(0.5); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .waveTL, .waveBR, .stars, .sparkle, .title, .subtitle, .slot, .slotIcon {
+    animation: none;
+  }
+}
