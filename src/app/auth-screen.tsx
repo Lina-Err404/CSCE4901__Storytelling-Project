@@ -4,8 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { User } from "@supabase/supabase-js"
 import { CoverBook, CoverFrame } from "@/components/auth/CoverArtwork";
 import { logIn, signUp } from "./Login_Signup_Backend/authServiceSB";
-// originally was from ./Login_Signup_Backend/supabase-client on branch v v v
-import { supabaseConfigurationMissing } from "./supabase-lobbies/supabase-client.ts";
+import { supabaseConfigurationMissing } from "./Login_Signup_Backend/supabase-client";
 
 type AuthView =
   | "roleSelection"
