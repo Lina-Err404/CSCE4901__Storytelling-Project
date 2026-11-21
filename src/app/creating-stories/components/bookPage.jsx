@@ -2,6 +2,7 @@
 
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { DrawingCanvas, DrawingSnapshot, setDrawingOwner } from "./drawingCanvas"
+import PeerReactions from "../../reactions/PeerReactions"
 
 const FLIP_MS = 1000
 const STRIPS = 12 // the turning page is built from strips so it can bend like paper
@@ -253,10 +254,10 @@ function Face({ side, children }) {
 }
 
 /* what is written on a page: name, story, page number */
-function PageBody({ side, page, number, editable, onChangeDocument, onSave }) {
+function PageBody({ side, page, number, editable, studentId, onChangeDocument, onSave }) {
     if (!page) return null
 
-    const box = side === "left" ? "13% 8% 10% 6%" : "13% 6% 10% 8%"
+    const box = side === "left" ? "13% 8% 16% 6%" : "13% 6% 16% 8%"
     const edge = side === "left" ? { left: "6%", right: "8%" } : { left: "8%", right: "6%" }
     const writingDocument = page.writingDocument ?? {
         version: 1,
@@ -282,6 +283,18 @@ function PageBody({ side, page, number, editable, onChangeDocument, onSave }) {
                     ? <RichTextDisplay writingDocument={writingDocument} />
                     : <div className="absolute rounded-xl italic text-[#a9abb8]" style={{ inset: box, border: page.mine ? "1.5px dashed #c3c6d4" : "1.5px solid transparent", padding: "4.5% 5%" }}>Nothing written yet</div>
             )}
+
+            {/* R6 / R7: Peer Reactions bar */}
+{studentId && page.segmentId && (
+    <div className="absolute left-0 right-0 z-20 flex justify-center" style={{ bottom: "7.5%" }}>
+        <PeerReactions
+            key={`${page.segmentId}-${studentId}`}
+            segmentId={page.segmentId}
+            currentUserId={studentId}
+            readOnly={page.mine}
+        />
+    </div>
+)}
 
             <span className="absolute left-0 right-0 text-center text-[#b4b6c2]" style={{ bottom: "3.5%", fontSize: SMALL_SIZE }}>
                 {number}
@@ -373,7 +386,7 @@ function Strip({ i, front, back, backIndex, frontNumber, backNumber }) {
 }
 
 /* the open book */
-function BookPage({ pages, index, myIndex, mode = "writing", onTurn, onJump, onChangeDocument, onSave, saved, error, errorMessage }) {
+function BookPage({ pages, index, myIndex, studentId, mode = "writing", onTurn, onJump, onChangeDocument, onSave, saved, error, errorMessage }) {
     const [anim, setAnim] = useState(null) // null | { dir: "next" | "prev" }
     const bookRef = useRef(null)
     const leafRef = useRef(null)
@@ -490,6 +503,7 @@ function BookPage({ pages, index, myIndex, mode = "writing", onTurn, onJump, onC
                                 page={page(rightIdx)}
                                 number={2 * rightIdx + 2}
                                 editable={canEdit}
+                                studentId={studentId}
                                 onChangeDocument={onChangeDocument}
                                 onSave={onSave}
                             />

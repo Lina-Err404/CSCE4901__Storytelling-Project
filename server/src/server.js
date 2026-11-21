@@ -21,6 +21,7 @@ const { Server } = require('socket.io');
 
 const { admin, db } = require('./firebase');
 const { createTimerRouter } = require('./timerRoutes');
+const { createReactionsRouter } = require('./reactionsRoutes');
 const { createRequireStudent, createRequireTeacher } = require('./auth');
 const { supabase, getSupabase } = require('./supabase');
 const {
@@ -120,10 +121,16 @@ app.use(
   })
 );
 
-/*
- * Supabase routes
- */
 if (supabase) {
+  // R6/R7: Give and View Reactions
+  app.use(
+    '/reactions',
+    createReactionsRouter({
+      supabase,
+      requireStudent: supabaseRequireStudent,
+    })
+  );
+
   app.get(
     '/supabase/profile',
     supabaseRequireUser,
