@@ -25,8 +25,7 @@ export default function TimerPage() {
 	}, [running, secondsLeft]);
 
 	const startTimer = () => {
-		if (minutes < 1 || minutes > 180) return;
-
+if (!Number.isInteger(minutes) || minutes < 1 || minutes > 180) return;
 		setTimeUp(false);
 		setSecondsLeft(minutes * 60);
 		setRunning(true);
@@ -39,8 +38,9 @@ export default function TimerPage() {
 	};
 
 	const formatTime = (totalSeconds: number) => {
-		const mins = Math.floor(totalSeconds / 60);
-		const secs = totalSeconds % 60;
+		const wholeSeconds = Math.max(0, Math.ceil(totalSeconds));
+const mins = Math.floor(wholeSeconds / 60);
+const secs = wholeSeconds % 60;
 		return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 	};
 
@@ -77,12 +77,14 @@ export default function TimerPage() {
 									<input
 										type="number"
 										min="1"
-										max="180"
+max="180"
+step="1"
 										value={minutes}
 										onChange={(e) => {
 											const value = Number(e.target.value);
-											if (value >= 1 && value <= 180)
-												setMinutes(value);
+											if (Number.isInteger(value) && value >= 1 && value <= 180) {
+    setMinutes(value);
+}
 										}}
 										className="w-28 rounded-md bg-gray-200 text-black text-center p-3"
 									/>
@@ -103,7 +105,7 @@ export default function TimerPage() {
 
 								<button
 									onClick={startTimer}
-									disabled={minutes < 1 || minutes > 180}
+									disabled={!Number.isInteger(minutes) || minutes < 1 || minutes > 180}
 									className="bg-gray-300 text-black px-10 py-4 rounded-md hover:bg-white disabled:opacity-50"
 								>
 									START
