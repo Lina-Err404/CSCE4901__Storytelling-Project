@@ -324,12 +324,12 @@ export default function PeerReactions({
     .map((id) => REACTION_POOL.find((r) => r.id === id))
     .filter((r): r is ReactionOption => Boolean(r));
 
-  // if viewing own page (R7), also show any other emoji from the pool that received > 0 reactions
-  const extraReceivedOptions = readOnly
-    ? REACTION_POOL.filter(
-        (r) => !topFourIds.includes(r.id) && (counts[r.id] || 0) > 0
-      )
-    : [];
+  // show any other emoji from the pool that received > 0 reactions (on both own and peer pages)
+const extraReceivedOptions = REACTION_POOL.filter(
+  (r) =>
+    !topFourIds.includes(r.id) &&
+    ((counts[r.id] || 0) > 0 || (!readOnly && userReacted === r.id))
+);
 
   const displayedReactions = [...topFourOptions, ...extraReceivedOptions];
 
