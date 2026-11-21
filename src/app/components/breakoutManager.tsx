@@ -1,7 +1,6 @@
 "use client";
 
 import { BreakoutRoom, Lobby } from "@/lib/breakoutRooms";
-import { randomlyAssignStudents } from "@/lib/randomBreakoutRooms";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { supabase } from "../supabase-lobbies/supabase-client";
