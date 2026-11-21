@@ -46,6 +46,7 @@ const {
   createClassesRouter,
   createLobbyRouter,
   createSocketAuth,
+  createStoryRouter,
 } = require('./');
 
 const {
