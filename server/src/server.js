@@ -69,8 +69,10 @@ const requireStudent = createRequireStudent(admin);
 const supabaseRequireTeacher =
   supabase && createSupabaseRequireTeacher(supabase);
 
-const supabaseRequireStudent =
-  supabase && createSupabaseRequireStudent(supabase);
+const requireStoryStudent =
+  supabase && createRequireSupabaseStudent(supabase);
+
+const supabaseRequireStudent = requireStoryStudent;
 
 const supabaseRequireUser =
   supabase && createSupabaseRequireUser(supabase);
