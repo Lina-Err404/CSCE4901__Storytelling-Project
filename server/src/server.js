@@ -1,16 +1,21 @@
 const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+require('dotenv').config({
+  path: path.resolve(__dirname, '../../.env.local'),
+});
+require('dotenv').config({
+  path: path.resolve(__dirname, '../../.env'),
+});
 
 if (
-  process.env.NODE_ENV !== 'production' &&
-  process.env.USE_FIRESTORE_EMULATOR !== 'false'
+    process.env.NODE_ENV !== 'production' &&
+    process.env.USE_FIRESTORE_EMULATOR !== 'false'
 ) {
   process.env.FIRESTORE_EMULATOR_HOST ||= '127.0.0.1:8080';
 }
 
 if (
-  process.env.NODE_ENV !== 'production' &&
-  process.env.USE_AUTH_EMULATOR !== 'false'
+    process.env.NODE_ENV !== 'production' &&
+    process.env.USE_AUTH_EMULATOR !== 'false'
 ) {
   process.env.FIREBASE_AUTH_EMULATOR_HOST ||= '127.0.0.1:9099';
 }
@@ -62,6 +67,8 @@ const {
 } = require('./waitingRoomSupabase');
 
 const port = Number(process.env.PORT || 4000);
+const requireTeacher = createRequireTeacher(supabase);
+const requireStudent = createRequireStudent(supabase);
 
 const requireTeacher = createRequireTeacher(admin);
 const requireStudent = createRequireStudent(admin);

@@ -11,14 +11,12 @@
     "test": "jest"
   },
   "dependencies": {
-    "@firebase/firestore": "^4.19.0",
+    "@supabase/auth-ui-react": "^0.4.7",
     "@supabase/supabase-js": "^2.119.0",
     "@tanstack/react-hotkeys": "^0.27.0",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.5.0",
     "dotenv": "^18.0.8",
-    "firebase": "^13.1.0",
-    "firebase-admin": "^14.5.0",
     "konva": "^10.9.1",
     "lucide-react": "^1.59.0",
     "next": "16.4.6",

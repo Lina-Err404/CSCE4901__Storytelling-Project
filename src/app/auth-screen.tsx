@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import type { User } from "firebase/auth";
+import type { User } from "@supabase/supabase-js"
 import { CoverBook, CoverFrame } from "@/components/auth/CoverArtwork";
-import { logIn, signUp } from "../app/Login_Signup_Backend/authServiceFB";
-import { authConfigurationMissing } from "./firebase-client";
+import { logIn, signUp } from "./Login_Signup_Backend/authServiceSB";
+import { supabaseConfigurationMissing } from "./Login_Signup_Backend/supabase-client";
 
 type AuthView =
   | "roleSelection"
@@ -73,6 +73,8 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
     const firstName = String(formData.get("firstName") ?? "").trim();
     const lastName = String(formData.get("lastName") ?? "").trim();
 
+
+    // Known issue: user data not able to be assigned to variable user
     try {
       if (view === "teacherSignup") {
         const user = await signUp(email, password, firstName, lastName);
@@ -237,9 +239,10 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
               </button>
               <p id="login-note" className="form-note" role="status">
                 {submissionNotice ||
-                  (authConfigurationMissing
-                    ? "Set the public Firebase configuration before signing in."
-                    : "Sign in with your teacher account to open the host lobby.")}
+                  (supabaseConfigurationMissing
+                    ? "Set the public Supabase configuration before signing in."
+                    : "Sign in with your teacher account to open the host lobby.")
+                    }
               </p>
             </form>
 
@@ -353,9 +356,10 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
               </button>
               <p id="signup-note" className="form-note" role="status">
                 {submissionNotice ||
-                  (authConfigurationMissing
-                    ? "Set the public Firebase configuration before creating an account."
-                    : "Create your teacher account to host classroom lobbies.")}
+                  (supabaseConfigurationMissing
+                    ? "Set the public Supabase configuration before creating an account."
+                    : "Create your teacher account to host classroom lobbies.")
+                    }
               </p>
             </form>
 

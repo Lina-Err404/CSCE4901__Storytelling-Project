@@ -55,7 +55,39 @@ export default function TeacherReviewPage({
     setReloadKey((key) => key + 1);
   }
 
-  if (loadError || !segments) {
+  // Save feedback to Supabase so it stays after a refresh.
+  async function saveFeedback() {
+    const trimmed = feedback.trim();
+    setSaving(true);
+    try {
+      await saveFeedbackInDb(storyId, trimmed);
+      setSavedFeedback(trimmed);
+      setFeedback(trimmed);
+      setMessage(trimmed ? "Feedback saved." : "Feedback cleared.");
+    } catch (error) {
+      console.error("Failed to save feedback", error);
+      setMessage("Could not save feedback. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Save approval to Supabase.
+  async function approveStory() {
+    setSaving(true);
+    try {
+      await approveStoryInDb(storyId);
+      setApproved(true);
+      setMessage("Story approved.");
+    } catch (error) {
+      console.error("Failed to approve story", error);
+      setMessage("Could not approve the story. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loadError || !segments || !story) {
     return (
       <main className="min-h-screen bg-[#1e4d85] px-4 py-8 text-white sm:px-8">
         <div role="status" className="mx-auto max-w-6xl">

@@ -306,6 +306,9 @@ const SetItem = ({ storyId, studentId, students = [studentId], mode = "writing" 
             setError(true)
             return
         }
+        setStories((prev) => ({ ...prev, [studentId]: draft })) // keep the saved text showing
+        setDraft(null)
+        setError(false)
     }
 
     const makeSegment = async () => stories[ownedStudentId]?.segmentId ?? null

@@ -8,6 +8,7 @@ server/node_modules/
 /.pnp
 .pnp.*
 .yarn/*
+/.idea/
 !.yarn/patches
 !.yarn/plugins
 !.yarn/releases
@@ -15,6 +16,7 @@ server/node_modules/
 
 # testing
 /coverage
+**/ui-debug.log
 
 # next.js
 /.next/
@@ -47,5 +49,4 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 env.download
-lib/firebaseAdmin.ts
 env.local

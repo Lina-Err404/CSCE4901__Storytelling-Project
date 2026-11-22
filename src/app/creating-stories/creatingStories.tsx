@@ -1,8 +1,10 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Image from "next/image"
 import SetItem from "./components/SetItem"
 import TopBar from "./components/topBar"
+import supabase from "@/src/utils/supabase"
 import StampSidePanel from "./components/stampSidePanel"
 import DrawingSidePanel from "./components/drawingSidePanel"
 import WritingSidePanel from "./components/writingSidePanel"
