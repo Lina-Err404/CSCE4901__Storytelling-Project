@@ -217,34 +217,61 @@ export default function BreakoutManager({ lobby }: { lobby: Lobby }) {
   );
 
   // Randomly assign students into balanced rooms with valid UUID roomIds.
-  const handleRandomlyAssignStudents = () => {
-    const studentIds = lobby.students.map((student) => student.id);
-    const count = rooms.length || roomCount;
-
-    if (count < 1 || studentIds.length < count * 2) {
-      setError("You need at least two students per room.");
-      return;
-    }
-
-    for (let index = studentIds.length - 1; index > 0; index--) {
-      const other = Math.floor(Math.random() * (index + 1));
-      [studentIds[index], studentIds[other]] = [
-        studentIds[other],
-        studentIds[index],
-      ];
-    }
-
-    const nextRooms = Array.from({ length: count }, (_, index) => ({
-      roomId: rooms[index]?.roomId ?? crypto.randomUUID(),
-      roomName: rooms[index]?.roomName ?? `Room ${index + 1}`,
-      studentIds: studentIds.filter(
-        (_, studentIndex) => studentIndex % count === index
-      ),
-    }));
-
+  const handleRandomlyAssignStudents = async () => {
+  try {
+    setSaving(true);
     setError(null);
+
+    const token = await getAccessToken();
+
+    // If rooms already exist, use the current number of rooms.
+    // Otherwise use the number selected by the teacher.
+    const count = rooms.length > 0 ? rooms.length : roomCount;
+
+    const randomUrl = `/api/supabase/lobbies/${encodeURIComponent(
+      lobby.lobbyId
+    )}/breakout-rooms/random`;
+
+    const res = await fetch(randomUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        roomCount: count,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || data.success === false) {
+      throw new Error(
+        data.error ?? "Failed to randomly assign students."
+      );
+    }
+
+    const nextRooms: BreakoutRoom[] = Array.isArray(data.rooms)
+      ? data.rooms.map((room: BreakoutRoom) => ({
+          roomId: String(room.roomId ?? ""),
+          roomName: String(room.roomName ?? "Room"),
+          studentIds: Array.isArray(room.studentIds)
+            ? room.studentIds
+            : [],
+        }))
+      : [];
+
     updateRooms(nextRooms);
-  };
+  } catch (e) {
+    setError(
+      e instanceof Error
+        ? e.message
+        : "Failed to randomly assign students."
+    );
+  } finally {
+    setSaving(false);
+  }
+};
 
   if (loading) {
     return <p>Loading...</p>;

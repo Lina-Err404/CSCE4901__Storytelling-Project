@@ -29,6 +29,7 @@ const { createTimerRouter } = require('./timerRoutes');
 const { createReactionsRouter } = require('./reactionsRoutes');
 const { createRequireStudent, createRequireTeacher } = require('./auth');
 const { supabase, getSupabase } = require('./supabase');
+
 const {
   createRequireSupabaseStudent,
   createRequireTeacher: createSupabaseRequireTeacher,
@@ -57,6 +58,10 @@ const {
 const {
   createBreakoutRoomRoutes,
 } = require('./breakoutRoomRoutes');
+
+const {
+  createRandomBreakoutRoutes,
+} = require('./randomBreakoutRoutes');
 
 const {
   createWaitingRoomRoutes,
@@ -129,7 +134,9 @@ app.use(
 );
 
 if (supabase) {
-  // R6/R7: Give and View Reactions
+  /*
+   * R6/R7: Give and View Reactions
+   */
   app.use(
     '/reactions',
     createReactionsRouter({
@@ -150,6 +157,9 @@ if (supabase) {
     }
   );
 
+  /*
+   * Supabase Classes
+   */
   app.use(
     '/supabase',
     createSupabaseClassesRouter({
@@ -159,6 +169,9 @@ if (supabase) {
     })
   );
 
+  /*
+   * Supabase Lobby
+   */
   app.use(
     '/supabase',
     createSupabaseLobbyRouter({
@@ -171,11 +184,22 @@ if (supabase) {
   );
 
   /*
-   * R9/R20: Breakout Room persistence
+   * R9: Breakout Room persistence
    */
   app.use(
     '/supabase',
     createBreakoutRoomRoutes({
+      supabase,
+      requireTeacher: supabaseRequireTeacher,
+    })
+  );
+
+  /*
+   * R20: Random Breakout Room assignment
+   */
+  app.use(
+    '/supabase',
+    createRandomBreakoutRoutes({
       supabase,
       requireTeacher: supabaseRequireTeacher,
     })
@@ -195,6 +219,9 @@ if (supabase) {
     })
   );
 
+  /*
+   * Story routes
+   */
   app.use(
     createStoryRouter({
       requireSupabaseStudent: requireStoryStudent,
@@ -207,6 +234,7 @@ if (supabase) {
       error: 'Supabase lobby features are not configured',
     })
   );
+
   app.use(['/stories', '/story-segments'], (req, res) =>
     res.status(503).json({
       error: 'Supabase story features are not configured',
@@ -227,7 +255,9 @@ app.use((error, req, res, next) => {
   if (res.headersSent) {
     return next(error);
   }
+
   console.error('API request failed:', error);
+
   return res.status(500).json({
     error: 'Internal server error',
   });
