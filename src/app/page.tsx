@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import type { User } from "@supabase/supabase-js";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AuthScreen } from "./auth-screen";
 import {
@@ -485,69 +486,79 @@ export default function Home() {
   }
 
   return (
-      <main className="min-h-screen bg-slate-50 text-slate-900">
-        <div className="flex min-h-screen">
-          <aside className="hidden w-64 shrink-0 border-r border-slate-200 bg-white p-5 md:flex md:flex-col">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-600 text-2xl text-white">
-                📚
-              </div>
-              <div>
-                <p className="font-bold">Collab</p>
-                <p className="text-sm text-slate-500">Storytelling</p>
-              </div>
+    <main className="min-h-screen bg-gradient-to-b from-[#0e102a] via-[#13204a] to-[#134780] text-[#134780]">
+      <div className="flex min-h-screen">
+        <aside className="hidden w-64 shrink-0 border-r border-[#abc7e5] bg-[#f0e8db] p-5 md:flex md:flex-col">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-600 text-2xl text-white">
+              📖
+            </div>
+            <div>
+              <p className="font-bold">Collab</p>
+              <p className="text-sm text-slate-500">Storytelling</p>
             </div>
 
             <p className="mb-3 mt-10 text-xs font-bold uppercase tracking-widest text-slate-400">
               Teacher workspace
             </p>
 
-            <nav className="space-y-1.5">
-              {navItems.map((item) => (
-                  <button
-                      key={item.label}
-                      onClick={() => setActiveTab(item.label)}
-                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition ${
-                          activeTab === item.label
-                              ? "bg-indigo-50 text-indigo-700"
-                              : "text-slate-600 hover:bg-slate-50"
-                      }`}
-                  >
-                    <span className="text-lg">{item.icon}</span>
-                    {item.label}
-                    {item.label === "Class Lobby" && (
-                        <span className="ml-auto h-2 w-2 rounded-full bg-emerald-500" />
-                    )}
-                  </button>
-              ))}
-            </nav>
+          <div className="mt-5 flex items-center gap-3 border-t border-slate-100 pt-5">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-100 font-bold text-violet-700">
+              T
+            </div>
+            <div>
+              <p className="text-sm font-semibold">Teacher account</p>
+              <p className="text-xs text-slate-500">Host</p>
+            </div>
+          </div>
+        </aside>
 
-            <div className="mt-auto rounded-2xl bg-indigo-50 p-4">
-              <div className="text-xl">✨</div>
-              <p className="mt-2 font-semibold text-indigo-950">
-                A safe space to create
+        <section className="min-w-0 flex-1">
+          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[#abc7e5] bg-[#f0e8db] px-5 py-4 md:px-8">
+            <div>
+              <p className="text-sm text-slate-500">
+                Teacher workspace / {activeTab}
               </p>
-              <p className="mt-1 text-sm leading-5 text-indigo-800">
-                Your class, your stories, your rules.
-              </p>
+              <h1 className="mt-1 text-xl font-bold md:text-2xl">
+                {activeTab}
+              </h1>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="rounded-full bg-[#dcece4] px-3 py-2 text-sm font-semibold text-[#2f7f6c]">
+                ● Teacher
+              </span>
+              <Link
+                href="/supabase-lobbies"
+                className="rounded-lg border border-indigo-300 px-3 py-2 text-sm font-semibold text-indigo-700"
+              >
+                Supabase Lobby
+              </Link>
+              <button
+                onClick={handleSignOut}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold"
+              >
+                Sign out
+              </button>
             </div>
 
             <div className="mt-5 flex items-center gap-3 border-t border-slate-100 pt-5">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-100 font-bold text-violet-700">
                 T
               </div>
-              <div>
-                <p className="text-sm font-semibold">Teacher account</p>
-                <p className="text-xs text-slate-500">Host</p>
-              </div>
-            </div>
-          </aside>
-
-          <section className="min-w-0 flex-1">
-            <header className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4 md:px-8">
-              <div>
-                <p className="text-sm text-slate-500">
-                  Teacher workspace / {activeTab}
+            )}
+            {loading && (
+              <p role="status" className="text-sm text-slate-200">
+                Connecting to your classroom...
+              </p>
+            )}
+            {activeTab === "Story Sections" ? (
+              <StartingPrompt />
+            ) : activeTab !== "Class Lobby" ? (
+              <div className="rounded-2xl border border-slate-200 bg-white p-8">
+                <h2 className="text-xl font-bold">{activeTab}</h2>
+                <p className="mt-2 text-slate-600">
+                  Switch back to Class Lobby to share the session code and
+                  manage students.
                 </p>
                 <h1 className="mt-1 text-xl font-bold md:text-2xl">
                   {activeTab}
@@ -574,21 +585,34 @@ export default function Home() {
                   >
                     {error}
                   </div>
-              )}
-              {loading && (
-                  <p role="status" className="text-sm text-slate-500">
-                    Connecting to your classroom...
-                  </p>
-              )}
-              {activeTab === "Story Sections" ? (
-                  <StartingPrompt />
-              ) : activeTab !== "Class Lobby" ? (
-                  <div className="rounded-2xl border border-slate-200 bg-white p-8">
-                    <h2 className="text-xl font-bold">{activeTab}</h2>
-                    <p className="mt-2 text-slate-600">
-                      Switch back to Class Lobby to share the session code and
-                      manage students.
-                    </p>
+                </div>
+
+                <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+                  <label className="flex items-center gap-3 text-sm font-semibold text-slate-700">
+                    Classroom
+                   <select
+  value={classId}
+  onChange={(event) => setClassId(event.target.value)}
+  className="min-w-0 rounded-md border border-[#b9a98b] bg-white px-3 py-2 text-sm font-medium text-[#134780]"
+>
+                      {!classes.length && (
+                        <option value="">No classes yet</option>
+                      )}
+                      {classes.map((item) => (
+                        <option key={item.classId} value={item.classId}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <form onSubmit={createClass} className="flex gap-2">
+                    <input
+                      value={newClassName}
+                      onChange={(event) => setNewClassName(event.target.value)}
+                      placeholder="New class name"
+                      aria-label="New class name"
+                      className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                    />
                     <button
                         onClick={() => setActiveTab("Class Lobby")}
                         className="mt-5 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
