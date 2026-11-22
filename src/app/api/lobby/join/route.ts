@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   supabase,
   supabaseConfigurationMissing,
-} from "@/src/app/Login_Signup_Backend/supabase-client";
+} from "./supabase-lobbies/supabase-client.ts";
 
 const db = supabase;
 
