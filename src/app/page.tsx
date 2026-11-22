@@ -8,7 +8,7 @@ import { AuthScreen } from "./auth-screen";
 import {
   supabase,
   supabaseConfigurationMissing,
-} from "./supabase-lobbies/supabase-client.ts";
+} from "./supabase-lobbies/supabase-client";
 import { StudentLobby } from "./student-lobby";
 import StartingPrompt from "@/components/StartingPrompt";
 
@@ -485,7 +485,7 @@ export default function Home() {
     );
   }
 
-  return (
+   return (
     <main className="min-h-screen bg-gradient-to-b from-[#0e102a] via-[#13204a] to-[#134780] text-[#134780]">
       <div className="flex min-h-screen">
         <aside className="hidden w-64 shrink-0 border-r border-[#abc7e5] bg-[#f0e8db] p-5 md:flex md:flex-col">
@@ -497,12 +497,30 @@ export default function Home() {
               <p className="font-bold">Collab</p>
               <p className="text-sm text-slate-500">Storytelling</p>
             </div>
+          </div>
 
-            <p className="mb-3 mt-10 text-xs font-bold uppercase tracking-widest text-slate-400">
-              Teacher workspace
-            </p>
+          <p className="mb-3 mt-10 text-xs font-bold uppercase tracking-widest text-slate-400">
+            Teacher workspace
+          </p>
 
-          <div className="mt-5 flex items-center gap-3 border-t border-slate-100 pt-5">
+          <nav className="space-y-1">
+            {navItems.map((item) => (
+              <button
+                key={item.label}
+                onClick={() => setActiveTab(item.label)}
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition ${
+                  activeTab === item.label
+                    ? "bg-indigo-600 text-white"
+                    : "text-[#134780] hover:bg-white/60"
+                }`}
+              >
+                <span>{item.icon}</span>
+                {item.label}
+              </button>
+            ))}
+          </nav>
+
+          <div className="mt-auto flex items-center gap-3 border-t border-slate-100 pt-5">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-100 font-bold text-violet-700">
               T
             </div>
@@ -540,10 +558,15 @@ export default function Home() {
                 Sign out
               </button>
             </div>
+          </header>
 
-            <div className="mt-5 flex items-center gap-3 border-t border-slate-100 pt-5">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-100 font-bold text-violet-700">
-                T
+          <div className="mx-auto max-w-6xl space-y-6 p-5 md:p-8">
+            {error && (
+              <div
+                role="alert"
+                className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
+              >
+                {error}
               </div>
             )}
             {loading && (
@@ -560,67 +583,14 @@ export default function Home() {
                   Switch back to Class Lobby to share the session code and
                   manage students.
                 </p>
-                <h1 className="mt-1 text-xl font-bold md:text-2xl">
-                  {activeTab}
-                </h1>
-              </div>
-              <div className="flex items-center gap-3">
-              <span className="rounded-full bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
-                Teacher
-              </span>
                 <button
-                    onClick={handleSignOut}
-                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold"
+                  onClick={() => setActiveTab("Class Lobby")}
+                  className="mt-5 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
                 >
-                  Sign out
+                  Return to Class Lobby
                 </button>
               </div>
-            </header>
-
-            <div className="mx-auto max-w-6xl space-y-6 p-5 md:p-8">
-              {error && (
-                  <div
-                      role="alert"
-                      className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800"
-                  >
-                    {error}
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-                  <label className="flex items-center gap-3 text-sm font-semibold text-slate-700">
-                    Classroom
-                   <select
-  value={classId}
-  onChange={(event) => setClassId(event.target.value)}
-  className="min-w-0 rounded-md border border-[#b9a98b] bg-white px-3 py-2 text-sm font-medium text-[#134780]"
->
-                      {!classes.length && (
-                        <option value="">No classes yet</option>
-                      )}
-                      {classes.map((item) => (
-                        <option key={item.classId} value={item.classId}>
-                          {item.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <form onSubmit={createClass} className="flex gap-2">
-                    <input
-                      value={newClassName}
-                      onChange={(event) => setNewClassName(event.target.value)}
-                      placeholder="New class name"
-                      aria-label="New class name"
-                      className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                    />
-                    <button
-                        onClick={() => setActiveTab("Class Lobby")}
-                        className="mt-5 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
-                    >
-                      Return to Class Lobby
-                    </button>
-                  </div>
-              ) : (
+            ) : (
                   <>
                     <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-600 p-6 text-white shadow-lg md:p-8">
                       <div className="relative z-10 flex flex-col justify-between gap-6 lg:flex-row lg:items-center">
