@@ -21,11 +21,11 @@ const { Server } = require('socket.io');
 
 const { admin, db } = require('./firebase');
 const { createTimerRouter } = require('./timerRoutes');
+const { createReactionsRouter } = require('./reactionsRoutes');
 const { createRequireStudent, createRequireTeacher } = require('./auth');
-
-const { supabase } = require('./supabase');
+const { supabase, getSupabase } = require('./supabase');
 const {
-  createRequireStudent: createSupabaseRequireStudent,
+  createRequireSupabaseStudent,
   createRequireTeacher: createSupabaseRequireTeacher,
   createRequireUser: createSupabaseRequireUser,
 } = require('./supabaseAuth');
@@ -45,9 +45,21 @@ const {
 const {
   createClassesRouter,
   createLobbyRouter,
-  createRandomBreakoutRoutes,
   createSocketAuth,
+  createStoryRouter,
 } = require('./');
+
+const {
+  createBreakoutRoomRoutes,
+} = require('./breakoutRoomRoutes');
+
+const {
+  createWaitingRoomRoutes,
+} = require('./waitingRoomRoutes');
+
+const {
+  createGetGroupForStudent,
+} = require('./waitingRoomSupabase');
 
 const port = Number(process.env.PORT || 4000);
 
@@ -57,8 +69,10 @@ const requireStudent = createRequireStudent(admin);
 const supabaseRequireTeacher =
   supabase && createSupabaseRequireTeacher(supabase);
 
-const supabaseRequireStudent =
-  supabase && createSupabaseRequireStudent(supabase);
+const requireStoryStudent =
+  supabase && createRequireSupabaseStudent(supabase);
+
+const supabaseRequireStudent = requireStoryStudent;
 
 const supabaseRequireUser =
   supabase && createSupabaseRequireUser(supabase);
@@ -107,10 +121,16 @@ app.use(
   })
 );
 
-/*
- * Supabase routes
- */
 if (supabase) {
+  // R6/R7: Give and View Reactions
+  app.use(
+    '/reactions',
+    createReactionsRouter({
+      supabase,
+      requireStudent: supabaseRequireStudent,
+    })
+  );
+
   app.get(
     '/supabase/profile',
     supabaseRequireUser,
@@ -144,19 +164,45 @@ if (supabase) {
   );
 
   /*
-   * R20: Random breakout room assignment
+   * R9/R20: Breakout Room persistence
    */
   app.use(
     '/supabase',
-    createRandomBreakoutRoutes({
+    createBreakoutRoomRoutes({
       supabase,
       requireTeacher: supabaseRequireTeacher,
+    })
+  );
+
+  /*
+   * R40: Student Waiting Room
+   */
+  const getGroupForStudent =
+    createGetGroupForStudent(supabase);
+
+  app.use(
+    '/supabase',
+    createWaitingRoomRoutes({
+      requireStudent: supabaseRequireStudent,
+      getGroupForStudent,
+    })
+  );
+
+  app.use(
+    createStoryRouter({
+      requireSupabaseStudent: requireStoryStudent,
+      getSupabase,
     })
   );
 } else {
   app.use('/supabase', (req, res) =>
     res.status(503).json({
       error: 'Supabase lobby features are not configured',
+    })
+  );
+  app.use(['/stories', '/story-segments'], (req, res) =>
+    res.status(503).json({
+      error: 'Supabase story features are not configured',
     })
   );
 }
@@ -174,7 +220,7 @@ app.use((error, req, res, next) => {
   if (res.headersSent) {
     return next(error);
   }
-
+  console.error('API request failed:', error);
   return res.status(500).json({
     error: 'Internal server error',
   });
