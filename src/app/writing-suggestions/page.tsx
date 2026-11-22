@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import GrammarSuggestions from "@/components/grammar/GrammarSuggestions";
+import GrammarSuggestions from "@/src/app/writing-suggestions/grammar/GrammarSuggestions";
 
 export default function StoryWritingPage() {
   const [storyText, setStoryText] = useState(
