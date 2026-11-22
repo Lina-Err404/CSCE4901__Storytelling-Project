@@ -1,4 +1,5 @@
 const express = require('express');
+const { randomUUID } = require('crypto');
 const { createRandomBreakoutRooms } = require('./randomBreakoutRooms');
 
 const UUID_PATTERN =
@@ -32,7 +33,6 @@ function createRandomBreakoutRoutes({ supabase, requireTeacher }) {
           });
         }
 
-        // Get the lobby and its class.
         const lobby = throwOnError(
           await supabase
             .from('lobbies')
@@ -47,7 +47,6 @@ function createRandomBreakoutRoutes({ supabase, requireTeacher }) {
           });
         }
 
-        // Make sure the logged-in teacher owns the class.
         const schoolClass = throwOnError(
           await supabase
             .from('classes')
@@ -62,7 +61,6 @@ function createRandomBreakoutRoutes({ supabase, requireTeacher }) {
           });
         }
 
-        // Get the students currently active in the lobby.
         const participants = throwOnError(
           await supabase
             .from('lobby_participants')
@@ -75,10 +73,24 @@ function createRandomBreakoutRoutes({ supabase, requireTeacher }) {
           ({ student_id }) => student_id
         );
 
-        const rooms = createRandomBreakoutRooms(
+        if (studentIds.length < roomCount * 2) {
+          return res.status(400).json({
+            error: 'You need at least two students per room.',
+          });
+        }
+
+        const generatedRooms = createRandomBreakoutRooms(
           studentIds,
           roomCount
         );
+
+        // Supabase breakout_rooms.room_id is UUID,
+        // so replace group1/group2 style IDs with UUIDs.
+        const rooms = generatedRooms.map((room, index) => ({
+          ...room,
+          roomId: randomUUID(),
+          roomName: room.roomName || `Room ${index + 1}`,
+        }));
 
         return res.json({
           success: true,
