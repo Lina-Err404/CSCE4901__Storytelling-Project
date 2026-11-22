@@ -75,9 +75,6 @@ const port = Number(process.env.PORT || 4000);
 const requireTeacher = createRequireTeacher(supabase);
 const requireStudent = createRequireStudent(supabase);
 
-const requireTeacher = createRequireTeacher(admin);
-const requireStudent = createRequireStudent(admin);
-
 const supabaseRequireTeacher =
   supabase && createSupabaseRequireTeacher(supabase);
 
