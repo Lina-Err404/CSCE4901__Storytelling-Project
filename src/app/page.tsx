@@ -8,7 +8,7 @@ import { AuthScreen } from "./auth-screen";
 import {
   supabase,
   supabaseConfigurationMissing,
-} from "./Login_Signup_Backend/supabase-client";
+} from "./supabase-lobbies/supabase-client.ts";
 import { StudentLobby } from "./student-lobby";
 import StartingPrompt from "@/components/StartingPrompt";
 
